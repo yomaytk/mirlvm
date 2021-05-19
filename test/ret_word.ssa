@@ -1,3 +1,4 @@
 function w $main() {
+@start:
     ret 42
 }

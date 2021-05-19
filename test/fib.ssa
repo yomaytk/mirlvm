@@ -1,0 +1,36 @@
+function w $fib(w %t0) {
+@l0
+	%n =l alloc4 4
+	storew %t0, %n
+	%t2 =w loadw %n
+	%t1 =w ceqw %t2, 0
+	jnz %t1, @l1, @l2
+@l1
+	ret 1
+@l2
+	%t6 =w loadw %n
+	%t5 =w ceqw %t6, 1
+	jnz %t5, @l4, @l5
+@l4
+	ret 1
+@l5
+	%t12 =w loadw %n
+	%t11 =w sub %t12, 1
+	%t10 =w call $fib(w %t11, ...)
+	%t16 =w loadw %n
+	%t15 =w sub %t16, 2
+	%t14 =w call $fib(w %t15, ...)
+	%t9 =w add %t10, %t14
+@l6
+@l3
+	ret 0
+}
+
+function w $main() {
+@l7
+	%n =l alloc4 4
+	storew 10, %n
+	%t2 =w call $fib(w 10, ...)
+	ret %t2
+}
+

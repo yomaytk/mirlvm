@@ -6,7 +6,7 @@ $(BUILD):
 	cargo build
 
 alltests: $(BUILD)
-	$(BIN) $(TEST)/ret_word.ssa
+	$(BIN) $(TEST)/add.ssa
 
 clean:
 	cargo clean

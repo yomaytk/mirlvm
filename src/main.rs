@@ -1,11 +1,14 @@
 extern crate mirlvm;
 
-use mirlvm::parser::*;
 use mirlvm::lexer::*;
+use mirlvm::parser::*;
+use mirlvm::lowir::*;
 
 fn main() {
     let mut tmass = lex();
     // println!("{:#?}", tmass);
-    let program = parse(&mut tmass);
-    println!("{:#?}", program);
+    let parserprogram = parse(&mut tmass);
+    // println!("{:#?}", parserprogram);
+    let lirprogram = genlowir(parserprogram);
+    println!("{:#?}", lirprogram);
 }

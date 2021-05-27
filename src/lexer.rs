@@ -90,17 +90,17 @@ impl TokenMass {
         self.cpos += 1;
         res
     }
-    pub fn getvar_n(&mut self, varenv: &VariableEnvironment) -> Var {
+    pub fn getvar_n(&mut self, varenv: &VariableEnvironment<&'static str, Var>) -> Var {
         let key = self.tks[self.cpos].get_text();
-        let res = varenv.get(key);
+        let res = varenv.get(&key);
         self.cpos += 1;
         res
     }
-    pub fn getfirstclassobj_n(&mut self, varenv: &VariableEnvironment) -> FirstClassObj {
+    pub fn getfirstclassobj_n(&mut self, varenv: &VariableEnvironment<&'static str, Var>) -> FirstClassObj {
         let tty = self.tks[self.cpos].tty;
         self.cpos += 1;
         if tty == TokenType::Ident {
-            return FirstClassObj::Variable(varenv.get(self.tks[self.cpos-1].get_text()));
+            return FirstClassObj::Variable(varenv.get(&self.tks[self.cpos-1].get_text()));
         }
         if tty == TokenType::Ilit {
             return FirstClassObj::Num(self.tks[self.cpos-1].num);

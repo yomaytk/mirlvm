@@ -1,4 +1,5 @@
 extern crate mirlvm;
+use std::env;
 
 use mirlvm::lexer::*;
 use mirlvm::parser::*;
@@ -6,12 +7,24 @@ use mirlvm::lowir::*;
 use mirlvm::rega::*;
 
 fn main() {
+    
+    let args = env::args().collect::<Vec<String>>();
+    let option = &args[1];
+
     let mut tmass = lex();
-    // println!("{:#?}", tmass);
+    if option == "--out-lex" {
+        println!("{:#?}", tmass);
+    }
     let parserprogram = parse(&mut tmass);
-    // println!("{:#?}", parserprogram);
+    if option == "--out-parse" {
+        println!("{:#?}", parserprogram);
+    }
     let lirprogram = genlowir(parserprogram);
-    // println!("{:#?}", lirprogram);
+    if option == "--out-lowir" {
+        println!("{:#?}", lirprogram);
+    }
     let lirprogram2 = registeralloc(lirprogram);
-    println!("{:#?}", lirprogram2);
+    if option == "--out-lowir_rega" {
+        println!("{:#?}", lirprogram2);
+    }
 }

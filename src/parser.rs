@@ -219,8 +219,7 @@ fn parseinstroverall(tmass: &mut TokenMass, varenv: &mut VariableEnvironment<&'s
         if cur_tkty == TokenType::Eql { 
             assignty = ValueType::Long;
             var = Var::new(varname, VarType::Long, nextfreshregister());
-        }
-        else {
+        } else {
             assert_eq!(cur_tkty, TokenType::Eqw);
             assignty = ValueType::Word;
             var = Var::new(varname, VarType::Word, nextfreshregister());

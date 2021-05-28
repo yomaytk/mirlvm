@@ -1,6 +1,7 @@
 use super::*;
 use super::parser::*;
 use std::collections::HashMap;
+use rega::{GENEREGSIZE};
 
 pub static NULLNUMBER: i32 = -100;
 pub static REGDEFASIZE: i32 = 4;
@@ -24,15 +25,6 @@ impl Register {
             regsize: REGDEFASIZE,
         }
     }
-    pub fn newwithlife(vr: i32, birthday: i32, deathday: i32) -> Self {
-        Self {
-            vr,
-            rr: NULLNUMBER,
-            birthday,
-            deathday,
-            regsize: REGDEFASIZE,
-        }
-    }
     pub fn newall(vr: i32, birthday: i32, deathday: i32, regsize: i32) -> Self {
         Self {
             vr,
@@ -42,10 +34,30 @@ impl Register {
             regsize
         }
     }
+    pub fn regalloc(&mut self, realregs: &mut [i32;GENEREGSIZE]) {
+        // find register already allocated
+        let mut newrr = -1;
+        for i in 0..GENEREGSIZE {
+            if realregs[i] == self.vr {
+                self.rr = i as i32;
+                return
+            }
+            if newrr == -1 && realregs[i] == -1 {
+                newrr = i as i32;
+            }
+        }
+        // new register allocate
+        if newrr == -1 {
+            panic!("Not enough register.");
+        } else {
+            self.rr = newrr;
+            realregs[self.rr as usize] = self.vr;
+        }
+    }
 }
 
 #[derive(Clone, Copy, Debug, PartialEq)]
-pub enum RegInstr {
+pub enum LowIrInstr {
     Movenum(ValueType, Register, i32),
     Movereg(ValueType, Register, Register),
     Ret(Register),
@@ -56,32 +68,32 @@ pub enum RegInstr {
 }
 
 #[derive(Clone, Debug)]
-pub struct RegaBlock {
+pub struct LowIrBlock {
     pub lb: Label,
-    pub instrs: Vec<RegInstr>,
+    pub instrs: Vec<LowIrInstr>,
 }
 
-impl RegaBlock {
+impl LowIrBlock {
     pub fn new(lb: Label) -> Self {
         Self {
             lb,
             instrs: vec![],
         }
     }
-    pub fn pushinstr(&mut self, rinstr: RegInstr, day: &mut i32) {
+    pub fn pushinstr(&mut self, rinstr: LowIrInstr, day: &mut i32) {
         *day += 1;
         self.instrs.push(rinstr)
     }
 }
 
 #[derive(Debug)]
-pub struct RegaFunction {
+pub struct LowIrFunction {
     pub lb: Label,
-    pub rbbs: Vec<RegaBlock>,
+    pub rbbs: Vec<LowIrBlock>,
     pub framesize: i32
 }
 
-impl RegaFunction {
+impl LowIrFunction {
     pub fn new(lb: Label) -> Self {
         Self {
             lb,
@@ -89,29 +101,29 @@ impl RegaFunction {
             framesize: -100,
         }
     }
-    fn pushblock(&mut self, rbb: RegaBlock) {
+    fn pushblock(&mut self, rbb: LowIrBlock) {
         self.rbbs.push(rbb)
     }
 }
 
 #[derive(Debug)]
-pub struct RegaProgram {
-    pub funcs: Vec<RegaFunction>
+pub struct LowIrProgram {
+    pub funcs: Vec<LowIrFunction>
 }
 
-impl RegaProgram {
+impl LowIrProgram {
     pub fn new() -> Self {
         Self {
             funcs: vec![]
         }
     }
-    pub fn pushfunc(&mut self, rgfun: RegaFunction) {
+    pub fn pushfunc(&mut self, rgfun: LowIrFunction) {
         self.funcs.push(rgfun);
     }
 }
 
 fn evalparserinstr(pinstr: ParserInstr, register_lifedata: &mut HashMap<i32, (i32, i32)>, varstackdata: &mut HashMap<i32, i32>,
-    rbb: &mut RegaBlock, day: &mut i32, stackpointer: &mut i32) -> Option<Register> {
+    rbb: &mut LowIrBlock, day: &mut i32, stackpointer: &mut i32) -> Option<Register> {
     use ParserInstr::*;
     match pinstr {
         Ret(fco) => {
@@ -123,7 +135,7 @@ fn evalparserinstr(pinstr: ParserInstr, register_lifedata: &mut HashMap<i32, (i3
                     if let Some((birthday, _)) = register_lifedata.get(&var.freshnum) {
                         src.birthday = *birthday;
                     }
-                    rbb.pushinstr(RegInstr::Ret(src), day);
+                    rbb.pushinstr(LowIrInstr::Ret(src), day);
                     register_lifedata.insert(src.vr, (src.birthday, src.deathday));
                     Some(src)
                 }
@@ -131,7 +143,7 @@ fn evalparserinstr(pinstr: ParserInstr, register_lifedata: &mut HashMap<i32, (i3
                     let mut src = Register::new(nextfreshregister());
                     src.birthday = *day + 1;
                     src.deathday = *day + 1;
-                    rbb.pushinstr(RegInstr::Movenum(ValueType::Word, src, num), day);
+                    rbb.pushinstr(LowIrInstr::Movenum(ValueType::Word, src, num), day);
                     register_lifedata.insert(src.vr, (src.birthday, src.deathday));
                     Some(src)
                 }
@@ -143,7 +155,7 @@ fn evalparserinstr(pinstr: ParserInstr, register_lifedata: &mut HashMap<i32, (i3
             if let Some((birthday, _)) = register_lifedata.get(&var.freshnum) {
                 dst.birthday = *birthday;
             }
-            rbb.pushinstr(RegInstr::Movereg(valuety, dst, src), day);
+            rbb.pushinstr(LowIrInstr::Movereg(valuety, dst, src), day);
             register_lifedata.insert(dst.vr, (dst.birthday, dst.deathday));
             None
         }
@@ -161,7 +173,7 @@ fn evalparserinstr(pinstr: ParserInstr, register_lifedata: &mut HashMap<i32, (i3
             let varsp = varstackdata.get(&dstvar.freshnum).unwrap_or_else(|| panic!("var can't be found in Storew"));
             match fco {
                 FirstClassObj::Num(num) => {
-                    rbb.pushinstr(RegInstr::Storewnum(bytesize, num, *varsp), day);
+                    rbb.pushinstr(LowIrInstr::Storewnum(bytesize, num, *varsp), day);
                 }
                 FirstClassObj::Variable(srcvar) => {
                     if let Some((birthday, _)) = register_lifedata.get(&srcvar.freshnum) {
@@ -170,7 +182,7 @@ fn evalparserinstr(pinstr: ParserInstr, register_lifedata: &mut HashMap<i32, (i3
                         panic!("{:?} is not defined", srcvar);
                     }
                     let src = Register::new(srcvar.freshnum);
-                    rbb.pushinstr(RegInstr::Storewreg(bytesize, src, *varsp), day);
+                    rbb.pushinstr(LowIrInstr::Storewreg(bytesize, src, *varsp), day);
                 }
             }
             None
@@ -181,7 +193,7 @@ fn evalparserinstr(pinstr: ParserInstr, register_lifedata: &mut HashMap<i32, (i3
             let varsp = varstackdata.get(&var.freshnum).unwrap_or_else(|| { panic!("{:?} is not defined.", var) });
             let src = Register::newall(nextfreshregister(), *day+1, *day+1, var.ty.toregrefsize());
             register_lifedata.insert(src.vr, (src.birthday, src.deathday));
-            rbb.pushinstr(RegInstr::Loadw(src, *varsp), day);
+            rbb.pushinstr(LowIrInstr::Loadw(src, *varsp), day);
             Some(src)
         }
         Add(lfco, rfco) => {
@@ -193,7 +205,7 @@ fn evalparserinstr(pinstr: ParserInstr, register_lifedata: &mut HashMap<i32, (i3
                 let src = Register::newall(v2.freshnum, *v2birth, *day+1, v2.ty.toregrefsize());
                 register_lifedata.insert(v1.freshnum, (dst.birthday, dst.deathday));
                 register_lifedata.insert(v2.freshnum, (src.birthday, src.deathday));
-                rbb.pushinstr(RegInstr::Add(dst, src), day);
+                rbb.pushinstr(LowIrInstr::Add(dst, src), day);
                 return Some(dst)
             }
             panic!("Don't come here at your current level")
@@ -207,11 +219,11 @@ fn decidereglife(r: &mut Register, register_lifedata: &mut HashMap<i32, (i32, i3
     (*r).deathday = *deathday;
 }
 
-fn registerlifeupdate(rgp: &mut RegaProgram, register_lifedata: &mut HashMap<i32, (i32, i32)>) {
-    for rfun in &mut rgp.funcs {
+fn registerlifeupdate(lpg: &mut LowIrProgram, register_lifedata: &mut HashMap<i32, (i32, i32)>) {
+    for rfun in &mut lpg.funcs {
         for rbb in &mut rfun.rbbs {
             for rinstr in &mut rbb.instrs {
-                use RegInstr::*;
+                use LowIrInstr::*;
                 match rinstr {
                     Movenum(_, ref mut r1, _) => { decidereglife(r1, register_lifedata); } 
                     Movereg(.., ref mut r1, ref mut r2) => { 
@@ -232,27 +244,27 @@ fn registerlifeupdate(rgp: &mut RegaProgram, register_lifedata: &mut HashMap<i32
     }
 }
 
-pub fn genlowir(ppg: ParserProgram) -> RegaProgram {
-    let mut rgp = RegaProgram::new();
+pub fn genlowir(ppg: ParserProgram) -> LowIrProgram {
+    let mut lpg = LowIrProgram::new();
     let mut day = 0;
     // manage register lifespan
     let mut register_lifedata: HashMap<i32, (i32, i32)> = HashMap::new();
     let mut varstackdata = HashMap::new();
     // manage variable freshnum and stackpointer
     for pfun in ppg.funcs {
-        let mut rfun = RegaFunction::new(pfun.name.clone());
+        let mut rfun = LowIrFunction::new(pfun.name.clone());
         let mut stackpointer = 0;
         // TODO function arguments
         for pbb in pfun.bls {
-            let mut rbb = RegaBlock::new(pbb.lb.clone());
+            let mut rbb = LowIrBlock::new(pbb.lb.clone());
             for instr in pbb.instrs {
                 evalparserinstr(instr, &mut register_lifedata, &mut varstackdata, &mut rbb, &mut day, &mut stackpointer);
             }
             rfun.pushblock(rbb)
         }
         rfun.framesize = stackpointer;
-        rgp.pushfunc(rfun);
+        lpg.pushfunc(rfun);
     }
-    registerlifeupdate(&mut rgp, &mut register_lifedata);
-    rgp
+    registerlifeupdate(&mut lpg, &mut register_lifedata);
+    lpg
 }

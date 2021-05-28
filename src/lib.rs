@@ -5,6 +5,7 @@ use once_cell::sync::Lazy;
 pub mod lexer;
 pub mod parser;
 pub mod lowir;
+pub mod rega;
 
 type Label = String;
 type VarName = String;

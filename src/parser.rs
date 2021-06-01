@@ -147,6 +147,12 @@ impl ValueType {
             ValueType::Long => { 8 }
         }
     }
+    pub fn bitsize(self) -> i32 {
+        match self {
+            ValueType::Word => { 32 }
+            ValueType::Long => { 64 }
+        }
+    }
 }
 
 #[derive(Clone, Debug, PartialEq)]

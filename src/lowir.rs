@@ -2,6 +2,7 @@ use super::*;
 use super::parser::*;
 use std::collections::HashMap;
 use rega::{GENEREGSIZE};
+use std::fmt;
 
 pub static NULLNUMBER: i32 = -100;
 pub static REGDEFASIZE: i32 = 4;
@@ -58,13 +59,28 @@ impl Register {
 
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub enum LowIrInstr {
-    Movenum(ValueType, Register, i32),
-    Movereg(ValueType, Register, Register),
+    Movenum(Register, i32),
+    Movereg(Register, Register),
     Ret(Register),
-    Storewreg(ByteSize, Register, i32),
-    Storewnum(ByteSize, i32, i32),
+    Storewreg(Register, i32),
+    Storewnum(i32, i32),
     Loadw(Register, i32),
     Add(Register, Register),
+}
+
+impl fmt::Display for LowIrInstr {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        use LowIrInstr::*;
+        match self {
+            Movenum(r, c) => { write!(f, "\tmove {}r.{}({}), {}", r.regsize, r.vr, r.rr, c) }
+            Movereg(r1, r2) => { write!(f, "\tmove {}r.{}({}), {}r.{}({})", r1.regsize, r1.vr, r1.rr, r2.regsize, r2.vr, r2.rr) }
+            Ret(r) => { write!(f, "\tret {}r.{}({})", r.regsize, r.vr, r.rr) }
+            Storewreg(r, offset) => { write!(f, "\tstorewreg [base-{}], {}r{}({})", offset, r.regsize, r.vr, r.rr) }
+            Storewnum(num, offset) => { write!(f, "\tstorewnum [base-{}], {}", offset, num) }
+            Loadw(r, offset) => { write!(f, "\tloadw {}r{}({}), [base-{}]", r.regsize, r.vr, r.rr, offset) }
+            Add(r1, r2) => { write!(f, "\tadd {}r{}({}), {}r{}({})", r1.regsize, r1.vr, r1.rr, r2.regsize, r2.vr, r2.rr) }
+        }
+    }
 }
 
 #[derive(Clone, Debug)]
@@ -143,19 +159,21 @@ fn evalparserinstr(pinstr: ParserInstr, register_lifedata: &mut HashMap<i32, (i3
                     let mut src = Register::new(nextfreshregister());
                     src.birthday = *day + 1;
                     src.deathday = *day + 1;
-                    rbb.pushinstr(LowIrInstr::Movenum(ValueType::Word, src, num), day);
+                    rbb.pushinstr(LowIrInstr::Movenum(src, num), day);
                     register_lifedata.insert(src.vr, (src.birthday, src.deathday));
                     Some(src)
                 }
             }
         }
         Assign(valuety, var, pinstr) => {
-            let src = evalparserinstr(*pinstr, register_lifedata, varstackdata, rbb, day, stackpointer).unwrap_or_else(|| panic!("evalparserinstr error: Assign"));
+            let mut src = evalparserinstr(*pinstr, register_lifedata, varstackdata, rbb, day, stackpointer).unwrap_or_else(|| panic!("evalparserinstr error: Assign"));
             let mut dst = Register::newall(var.freshnum, *day+1, *day+1, var.ty.toregrefsize());
             if let Some((birthday, _)) = register_lifedata.get(&var.freshnum) {
                 dst.birthday = *birthday;
             }
-            rbb.pushinstr(LowIrInstr::Movereg(valuety, dst, src), day);
+            src.deathday = *day+1;
+            rbb.pushinstr(LowIrInstr::Movereg(dst, src), day);
+            register_lifedata.insert(src.vr, (src.birthday, src.deathday));
             register_lifedata.insert(dst.vr, (dst.birthday, dst.deathday));
             None
         }
@@ -173,7 +191,7 @@ fn evalparserinstr(pinstr: ParserInstr, register_lifedata: &mut HashMap<i32, (i3
             let varsp = varstackdata.get(&dstvar.freshnum).unwrap_or_else(|| panic!("var can't be found in Storew"));
             match fco {
                 FirstClassObj::Num(num) => {
-                    rbb.pushinstr(LowIrInstr::Storewnum(bytesize, num, *varsp), day);
+                    rbb.pushinstr(LowIrInstr::Storewnum(num, *varsp), day);
                 }
                 FirstClassObj::Variable(srcvar) => {
                     if let Some((birthday, _)) = register_lifedata.get(&srcvar.freshnum) {
@@ -182,7 +200,7 @@ fn evalparserinstr(pinstr: ParserInstr, register_lifedata: &mut HashMap<i32, (i3
                         panic!("{:?} is not defined", srcvar);
                     }
                     let src = Register::new(srcvar.freshnum);
-                    rbb.pushinstr(LowIrInstr::Storewreg(bytesize, src, *varsp), day);
+                    rbb.pushinstr(LowIrInstr::Storewreg(src, *varsp), day);
                 }
             }
             None
@@ -225,19 +243,19 @@ fn registerlifeupdate(lpg: &mut LowIrProgram, register_lifedata: &mut HashMap<i3
             for rinstr in &mut rbb.instrs {
                 use LowIrInstr::*;
                 match rinstr {
-                    Movenum(_, ref mut r1, _) => { decidereglife(r1, register_lifedata); } 
+                    Movenum(ref mut r1, _) => { decidereglife(r1, register_lifedata); } 
                     Movereg(.., ref mut r1, ref mut r2) => { 
                         decidereglife(r1, register_lifedata);
                         decidereglife(r2, register_lifedata); 
                     }
                     Ret(r) => { decidereglife(r, register_lifedata); }
-                    Storewreg(_, ref mut r, _) => { decidereglife(r, register_lifedata); }
-                    Storewnum(..) => {}
+                    Storewreg(ref mut r, _) => { decidereglife(r, register_lifedata); }
                     Loadw(ref mut r, _) => { decidereglife(r, register_lifedata); }
                     Add(ref mut r1, ref mut r2) => {
                         decidereglife(r1, register_lifedata);
                         decidereglife(r2, register_lifedata);
                     }
+                    Storewnum(..) => {}
                 }
             }
         }

@@ -27,4 +27,15 @@ fn main() {
     if option == "--out-lowir_rega" {
         println!("{:#?}", lirprogram2);
     }
+    if option == "--out-lowir-ISA" {
+        for func in lirprogram2.funcs {
+            println!("Function {}:", func.lb);
+            for bb in func.rbbs {
+                println!("{}:", bb.lb);
+                for instr in bb.instrs {
+                    println!("{}", instr);
+                }
+            }
+        }
+    }
 }

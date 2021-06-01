@@ -6,10 +6,10 @@ pub mod lexer;
 pub mod parser;
 pub mod lowir;
 pub mod rega;
+pub mod codegen;
 
 type Label = String;
 type VarName = String;
-type ByteSize = i32;
 
 pub static PROGRAM: Lazy<String> = Lazy::new(|| {
     let file: String = env::args().collect::<Vec<String>>().last().unwrap().clone();

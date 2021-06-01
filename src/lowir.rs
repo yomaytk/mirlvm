@@ -209,7 +209,7 @@ fn evalparserinstr(pinstr: ParserInstr, register_lifedata: &mut HashMap<i32, (i3
             let (srcbirth, _) = register_lifedata.get(&var.freshnum).unwrap_or_else(|| { panic!("{:?} is not defined.", var) });
             register_lifedata.insert(var.freshnum, (*srcbirth, *day+1));
             let varsp = varstackdata.get(&var.freshnum).unwrap_or_else(|| { panic!("{:?} is not defined.", var) });
-            let src = Register::newall(nextfreshregister(), *day+1, *day+1, var.ty.toregrefsize());
+            let src = Register::newall(nextfreshregister(), *day+1, *day+1, 4);
             register_lifedata.insert(src.vr, (src.birthday, src.deathday));
             rbb.pushinstr(LowIrInstr::Loadw(src, *varsp), day);
             Some(src)

@@ -5,6 +5,7 @@ use mirlvm::lexer::*;
 use mirlvm::parser::*;
 use mirlvm::lowir::*;
 use mirlvm::rega::*;
+use mirlvm::codegen::*;
 
 fn main() {
     
@@ -14,21 +15,25 @@ fn main() {
     let mut tmass = lex();
     if option == "--out-lex" {
         println!("{:#?}", tmass);
+        return;
     }
     let parserprogram = parse(&mut tmass);
     if option == "--out-parse" {
         println!("{:#?}", parserprogram);
+        return;
     }
-    let lirprogram = genlowir(parserprogram);
+    let lirpg = genlowir(parserprogram);
     if option == "--out-lowir" {
-        println!("{:#?}", lirprogram);
+        println!("{:#?}", lirpg);
+        return;
     }
-    let lirprogram2 = registeralloc(lirprogram);
+    let lirpg2 = registeralloc(lirpg);
     if option == "--out-lowir_rega" {
-        println!("{:#?}", lirprogram2);
+        println!("{:#?}", lirpg2);
+        return;
     }
     if option == "--out-lowir-ISA" {
-        for func in lirprogram2.funcs {
+        for func in lirpg2.funcs {
             println!("Function {}:", func.lb);
             for bb in func.rbbs {
                 println!("{}:", bb.lb);
@@ -37,5 +42,7 @@ fn main() {
                 }
             }
         }
+        return;
     }
+    gen_x64code(lirpg2);
 }

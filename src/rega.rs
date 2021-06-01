@@ -1,7 +1,6 @@
-use super::*;
 use super::lowir::*;
 
-pub const GENEREGSIZE: usize = 8;
+pub const GENEREGSIZE: usize = 7;
 
 fn regaoflir(lir: &mut LowIrInstr, day: &mut i32, realregs: &mut [i32;GENEREGSIZE]) {
     use LowIrInstr::*;
@@ -29,7 +28,7 @@ fn regaoflir(lir: &mut LowIrInstr, day: &mut i32, realregs: &mut [i32;GENEREGSIZ
 
 pub fn registeralloc(mut lpg: LowIrProgram) -> LowIrProgram {
     let mut day = 1;
-    let mut realregs: [i32;GENEREGSIZE] = [-1, -1, -1, -1, -1, -1, -1, -1];
+    let mut realregs: [i32;GENEREGSIZE] = [-1, -1, -1, -1, -1, -1, -1];
     for lowfunc in &mut lpg.funcs {
         for lowbb in &mut lowfunc.rbbs {
             for lowir in &mut lowbb.instrs {

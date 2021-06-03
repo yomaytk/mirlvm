@@ -1,8 +1,8 @@
+use super::parser::{Environment, FirstClassObj, Var, VarType};
 use super::*;
-use super::parser::{VariableEnvironment, FirstClassObj, VarType, Var};
 
-const RESERVED_SIZE: usize = 7;
-const SIGNALS_SIZE: usize = 10;
+const RESERVED_SIZE: usize = 8;
+const SIGNALS_SIZE: usize = 11;
 
 pub static RESERVEDWORDS: [(&str, TokenType); RESERVED_SIZE] = [
     ("function", TokenType::Function),
@@ -12,6 +12,7 @@ pub static RESERVEDWORDS: [(&str, TokenType); RESERVED_SIZE] = [
     ("storew", TokenType::Storew),
     ("loadw", TokenType::Loadw),
     ("add", TokenType::Add),
+    ("call", TokenType::Call),
 ];
 
 pub static SIGNALS: [(&str, TokenType); SIGNALS_SIZE] = [
@@ -25,6 +26,7 @@ pub static SIGNALS: [(&str, TokenType); SIGNALS_SIZE] = [
     ("=w", TokenType::Eqw),
     ("=l", TokenType::Eql),
     (",", TokenType::Comma),
+    ("...", TokenType::Threedot),
 ];
 
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -50,6 +52,8 @@ pub enum TokenType {
     Storew,
     Loadw,
     Comma,
+    Threedot,
+    Call,
     Eof,
 }
 
@@ -61,7 +65,7 @@ pub struct TokenMass {
 
 impl TokenMass {
     pub fn new() -> Self {
-        Self { 
+        Self {
             tks: vec![],
             cpos: 0,
         }
@@ -90,37 +94,54 @@ impl TokenMass {
         self.cpos += 1;
         res
     }
-    pub fn getvar_n(&mut self, varenv: &VariableEnvironment<&'static str, Var>) -> Var {
+    pub fn getvar_n(&mut self, varenv: &Environment<&'static str, Var>) -> Var {
         let key = self.tks[self.cpos].get_text();
         let res = varenv.get(&key);
         self.cpos += 1;
         res
     }
-    pub fn getfirstclassobj_n(&mut self, varenv: &VariableEnvironment<&'static str, Var>) -> FirstClassObj {
+    pub fn getfirstclassobj_n(&mut self, varenv: &Environment<&'static str, Var>) -> FirstClassObj {
         let tty = self.tks[self.cpos].tty;
         self.cpos += 1;
         if tty == TokenType::Ident {
-            return FirstClassObj::Variable(varenv.get(&self.tks[self.cpos-1].get_text()));
+            return FirstClassObj::Variable(varenv.get(&self.tks[self.cpos - 1].get_text()));
         }
         if tty == TokenType::Ilit {
-            return FirstClassObj::Num(self.tks[self.cpos-1].num);
+            return FirstClassObj::Num(self.tks[self.cpos - 1].num);
         }
-        panic!("getfirstclassobj_n error. {:?}", self.tks[self.cpos-1]);
+        panic!("getfirstclassobj_n error. {:?}", self.tks[self.cpos - 1]);
     }
     pub fn gettype_n(&mut self) -> VarType {
         let tokentext = self.tks[self.cpos].get_text();
         // There is change for room
         self.cpos += 1;
         match tokentext {
-            "w" => { VarType::Word }
-            "l" => { VarType::Long }
-            _ => { panic!("TokenMass.gettype() error.")}
+            "w" => VarType::Word,
+            "l" => VarType::Long,
+            _ => {
+                panic!("TokenMass.gettype() error. {}", tokentext);
+            }
         }
     }
     pub fn gettext_n(&mut self) -> &'static str {
         let tktext = self.tks[self.cpos].get_text();
         self.cpos += 1;
         tktext
+    }
+    pub fn getfco_n(&mut self, varenv: &mut Environment<&'static str, Var>) -> FirstClassObj {
+        let ctk = self.getcurrent_token();
+        self.cpos += 1;
+        match ctk.tty {
+            TokenType::Ident => {
+                let lb = self.gettext_n();
+                let var = varenv.get(&lb);
+                FirstClassObj::Variable(var)
+            }
+            TokenType::Ilit => FirstClassObj::Num(ctk.num),
+            _ => {
+                panic!("getfco_n error. {:?}", self.getcurrent_token());
+            }
+        }
     }
     pub fn getcurrent_token(&self) -> Token {
         self.tks[self.cpos]
@@ -165,7 +186,7 @@ pub fn lex() -> TokenMass {
             continue;
         }
         // identification or reserved words
-        if pgchars[pos] == '%' || pgchars[pos].is_ascii_alphabetic()     {
+        if pgchars[pos] == '%' || pgchars[pos].is_ascii_alphabetic() {
             let mut pose = pos;
             let mut tty = TokenType::Ident;
             pose += 1;

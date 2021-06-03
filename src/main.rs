@@ -1,14 +1,13 @@
 extern crate mirlvm;
 use std::env;
 
-use mirlvm::lexer::*;
-use mirlvm::parser::*;
-use mirlvm::lowir::*;
-use mirlvm::rega::*;
 use mirlvm::codegen::*;
+use mirlvm::lexer::*;
+use mirlvm::lowir::*;
+use mirlvm::parser::*;
+use mirlvm::rega::*;
 
 fn main() {
-    
     let args = env::args().collect::<Vec<String>>();
     let option = &args[1];
 

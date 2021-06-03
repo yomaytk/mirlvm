@@ -1,0 +1,21 @@
+function w $addf(w %t0, w %t1) {
+@l0:
+	%a =l alloc4 4
+	storew %t0, %a
+	%b =l alloc4 4
+	storew %t1, %b
+	%t3 =w loadw %a
+	%t4 =w loadw %b
+	%t2 =w add %t3, %t4
+	ret %t2
+}
+
+function w $main() {
+@l1:
+	%a =l alloc4 4
+	storew 43, %a
+	%t3 =w loadw %a
+	%t4 =w call $addf(w 3, w 5, ...)
+	%t2 =w add %t3, %t4
+	ret %t2
+}

@@ -1,14 +1,14 @@
-use std::fs;
-use std::env;
 use once_cell::sync::Lazy;
+use std::env;
+use std::fs;
 
-pub mod lexer;
-pub mod parser;
-pub mod lowir;
-pub mod rega;
 pub mod codegen;
+pub mod lexer;
+pub mod lowir;
+pub mod parser;
+pub mod rega;
 
-type Label = String;
+type Label = &'static str;
 type VarName = String;
 
 pub static PROGRAM: Lazy<String> = Lazy::new(|| {

@@ -9,7 +9,9 @@ pub static X64_REG64: [&str; REGQUANTITY] = [
 pub static X64_REG32: [&str; REGQUANTITY] = [
     "r10d", "r11d", "ebx", "r12d", "r13d", "r14d", "r15d", "edi", "esi", "edx", "ecx", "r8d", "r9d",
 ];
-
+pub static X64_REG8: [&str; REGQUANTITY] = [
+    "r10b", "r11b", "bl", "r12b", "r13b", "r14b", "r15b", "dil", "sil", "dl", "cl", "r8b", "r9b",
+];
 fn selreg(r: lowir::Register) -> &'static str {
     if r.regsize == 4 {
         return X64_REG32[r.rr as usize];
@@ -116,6 +118,25 @@ pub fn gen_x64code(lirpg: LowIrProgram) {
                             print!("\tpop {}\n", X64_REG64[i]);
                         }
                         print!("\tmov {}, {}\n", selreg(r1), selrax(r1.regsize as usize));
+                    }
+                    Ceqw(r1, r2, rorn) => {
+                        match rorn {
+                            RegorNum::Reg(r3) => {
+                                print!("\tcmp {}, {}\n", selreg(r2), selreg(r3));
+                            }
+                            RegorNum::Num(num) => {
+                                print!("\tcmp {}, {}\n", selreg(r2), num);
+                            }
+                        }
+                        print!("\tsete {}\n", X64_REG8[r1.rr as usize]);
+                    }
+                    Jnz(r1, lb1, lb2) => {
+                        print!("\tcmp {}, 0\n", selreg(r1));
+                        print!("\tjne {}\n", lb1);
+                        print!("\tjmp {}\n", lb2);
+                    }
+                    Jmp(lb) => {
+                        print!("\tjmp {}\n", lb);
                     }
                 }
             }

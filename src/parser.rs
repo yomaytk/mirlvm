@@ -55,26 +55,26 @@ struct Arg {
 }
 
 #[derive(Debug)]
-pub struct ParserProgram {
-    pub funcs: Vec<ParserFunction>,
+pub struct SsaProgram {
+    pub funcs: Vec<SsaFunction>,
 }
 
-impl ParserProgram {
-    pub fn new(funcs: Vec<ParserFunction>) -> Self {
+impl SsaProgram {
+    pub fn new(funcs: Vec<SsaFunction>) -> Self {
         Self { funcs }
     }
 }
 
 #[derive(Clone, Debug, PartialEq)]
-pub struct ParserFunction {
+pub struct SsaFunction {
     pub name: &'static str,
     pub retty: VarType,
     pub args: Vec<Var>,
-    pub bls: Vec<ParserBlock>,
+    pub bls: Vec<SsaBlock>,
 }
 
-impl ParserFunction {
-    pub fn new(name: &'static str, retty: VarType, args: Vec<Var>, bls: Vec<ParserBlock>) -> Self {
+impl SsaFunction {
+    pub fn new(name: &'static str, retty: VarType, args: Vec<Var>, bls: Vec<SsaBlock>) -> Self {
         Self {
             name,
             retty,
@@ -98,13 +98,13 @@ impl Var {
 }
 
 #[derive(Clone, Debug, PartialEq)]
-pub struct ParserBlock {
+pub struct SsaBlock {
     pub lb: Label,
-    pub instrs: Vec<ParserInstr>,
+    pub instrs: Vec<SsaInstr>,
 }
 
-impl ParserBlock {
-    pub fn new(lb: Label, instrs: Vec<ParserInstr>) -> Self {
+impl SsaBlock {
+    pub fn new(lb: Label, instrs: Vec<SsaInstr>) -> Self {
         Self { lb, instrs }
     }
 }
@@ -116,14 +116,17 @@ pub enum FirstClassObj {
 }
 
 #[derive(Clone, Debug, PartialEq)]
-pub enum ParserInstr {
+pub enum SsaInstr {
     Ret(FirstClassObj),
-    Assign(ValueType, Var, Box<ParserInstr>),
+    Assign(ValueType, Var, Box<SsaInstr>),
     Alloc4(Var, i32),
     Storew(FirstClassObj, Var),
     Loadw(Var),
     Add(FirstClassObj, FirstClassObj),
-    Call(VarType, &'static str, Vec<FirstClassObj>),
+    Call(VarType, Label, Vec<FirstClassObj>),
+    Ceqw(Var, Var, FirstClassObj),
+    Jnz(Var, Label, Label),
+    Jmp(Label),
 }
 
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -177,19 +180,19 @@ fn parseinstrrhs(
     tmass: &mut TokenMass,
     varenv: &mut Environment<&'static str, Var>,
     funenv: &mut Environment<&'static str, VarType>,
-) -> ParserInstr {
+) -> SsaInstr {
     // loadw
     if tmass.eq_tkty(TokenType::Loadw) {
         let rhs = tmass.getvar_n(varenv);
         assert!(rhs.ty == VarType::Ptr2Word || rhs.ty == VarType::Ptr2Long);
-        return ParserInstr::Loadw(rhs);
+        return SsaInstr::Loadw(rhs);
     }
     // add
     if tmass.eq_tkty(TokenType::Add) {
         let lhs = tmass.getfirstclassobj_n(varenv);
         tmass.assert_tkty(TokenType::Comma);
         let rhs = tmass.getfirstclassobj_n(varenv);
-        return ParserInstr::Add(lhs, rhs);
+        return SsaInstr::Add(lhs, rhs);
     }
     // call
     if tmass.eq_tkty(TokenType::Call) {
@@ -200,19 +203,19 @@ fn parseinstrrhs(
         let mut args = vec![];
         tmass.assert_tkty(TokenType::Lbrace);
         if tmass.eq_tkty(TokenType::Rbrace) {
-            return ParserInstr::Call(retty, funlb, args);
+            return SsaInstr::Call(retty, funlb, args);
         }
         loop {
             if tmass.eq_tkty(TokenType::Threedot) {
                 break;
             }
-            let _tty = tmass.gettype_n();
+            let _ = tmass.gettype_n();
             let arg = tmass.getfco_n(varenv);
             args.push(arg);
             tmass.assert_tkty(TokenType::Comma);
         }
         tmass.eq_tkty(TokenType::Rbrace);
-        return ParserInstr::Call(retty, funlb, args);
+        return SsaInstr::Call(retty, funlb, args);
     }
     let curtk = tmass.getcurrent_token();
     panic!(
@@ -226,11 +229,11 @@ fn parseinstroverall(
     tmass: &mut TokenMass,
     varenv: &mut Environment<&'static str, Var>,
     funenv: &mut Environment<&'static str, VarType>,
-) -> ParserInstr {
+) -> SsaInstr {
     // ret
     if tmass.eq_tkty(TokenType::Ret) {
         let retnum = tmass.getfirstclassobj_n(varenv);
-        return ParserInstr::Ret(retnum);
+        return SsaInstr::Ret(retnum);
     }
     // lhs =* rhs instruction
     if tmass.cur_tkty() == TokenType::Ident {
@@ -252,18 +255,41 @@ fn parseinstroverall(
             let rhs = tmass.getnum_n();
             var.ty = VarType::Ptr2Word;
             varenv.append(var.name, var.clone());
-            return ParserInstr::Alloc4(var, rhs);
+            return SsaInstr::Alloc4(var, rhs);
+        }
+        // ceqw
+        if tmass.eq_tkty(TokenType::Ceqw) {
+            let lhs = tmass.getvar_n(varenv);
+            tmass.assert_tkty(TokenType::Comma);
+            let rhs = tmass.getfco_n(varenv);
+            var.ty = VarType::Word;
+            varenv.append(var.name, var.clone());
+            return SsaInstr::Ceqw(var, lhs, rhs);
         }
         let rhs = parseinstrrhs(tmass, varenv, funenv);
         varenv.append(var.name, var.clone());
-        return ParserInstr::Assign(assignty, var, Box::new(rhs));
+        return SsaInstr::Assign(assignty, var, Box::new(rhs));
     }
     // storew
     if tmass.eq_tkty(TokenType::Storew) {
         let lhs = tmass.getfirstclassobj_n(varenv);
         tmass.assert_tkty(TokenType::Comma);
         let rhs = tmass.getvar_n(varenv);
-        return ParserInstr::Storew(lhs, rhs);
+        return SsaInstr::Storew(lhs, rhs);
+    }
+    // jnz
+    if tmass.eq_tkty(TokenType::Jnz) {
+        let condvar = tmass.getvar_n(varenv);
+        tmass.assert_tkty(TokenType::Comma);
+        let blb1 = tmass.getblocklb_n();
+        tmass.assert_tkty(TokenType::Comma);
+        let blb2 = tmass.getblocklb_n();
+        return SsaInstr::Jnz(condvar, blb1, blb2);
+    }
+    // jmp
+    if tmass.eq_tkty(TokenType::Jmp) {
+        let blb = tmass.getblocklb_n();
+        return SsaInstr::Jmp(blb);
     }
     panic!("parseinstroverall error. {:?}", tmass.getcurrent_token());
 }
@@ -273,19 +299,18 @@ fn parsebb(
     tmass: &mut TokenMass,
     varenv: &mut Environment<&'static str, Var>,
     funenv: &mut Environment<&'static str, VarType>,
-) -> ParserBlock {
-    tmass.assert_tkty(TokenType::Atm);
+) -> SsaBlock {
     let blocklb = tmass.gettext_n();
     tmass.assert_tkty(TokenType::Colon);
     let mut instrs = vec![];
     loop {
         let tkty = tmass.cur_tkty();
-        if tkty == TokenType::Atm || tkty == TokenType::Crbrace {
+        if tkty == TokenType::Blocklb || tkty == TokenType::Crbrace {
             break;
         }
         instrs.push(parseinstroverall(tmass, varenv, funenv));
     }
-    ParserBlock::new(blocklb, instrs)
+    SsaBlock::new(blocklb, instrs)
 }
 
 fn parseargs(tmass: &mut TokenMass, varenv: &mut Environment<&'static str, Var>) -> Vec<Var> {
@@ -315,7 +340,7 @@ fn parseargs(tmass: &mut TokenMass, varenv: &mut Environment<&'static str, Var>)
 fn parsefun(
     tmass: &mut TokenMass,
     funenv: &mut Environment<&'static str, VarType>,
-) -> ParserFunction {
+) -> SsaFunction {
     tmass.assert_tkty(TokenType::Function);
     let functy = tmass.gettype_n();
     tmass.assert_tkty(TokenType::Dollar);
@@ -328,7 +353,7 @@ fn parsefun(
     let mut blocks = vec![];
     loop {
         let ctkty = tmass.cur_tkty();
-        if ctkty == TokenType::Atm {
+        if ctkty == TokenType::Blocklb {
             let bblock = parsebb(tmass, &mut varenv, funenv);
             blocks.push(bblock);
         } else {
@@ -336,10 +361,10 @@ fn parsefun(
             break;
         }
     }
-    ParserFunction::new(funclb, functy, argvars, blocks)
+    SsaFunction::new(funclb, functy, argvars, blocks)
 }
 
-pub fn parse(tmass: &mut TokenMass) -> ParserProgram {
+pub fn parse(tmass: &mut TokenMass) -> SsaProgram {
     let mut funcs = vec![];
     let mut funenv = Environment::new();
     loop {
@@ -352,5 +377,5 @@ pub fn parse(tmass: &mut TokenMass) -> ParserProgram {
         tmass.assert_tkty(TokenType::Eof);
         break;
     }
-    ParserProgram::new(funcs)
+    SsaProgram::new(funcs)
 }

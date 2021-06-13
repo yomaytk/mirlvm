@@ -5,7 +5,7 @@ pub const GENEREGSIZE: usize = 7;
 fn regaoflir(lir: &mut LowIrInstr, day: &mut i32, realregs: &mut [i32; GENEREGSIZE]) {
     use LowIrInstr::*;
     match lir {
-        Movenum(ref mut r, _) | Ret(ref mut r) | Storewreg(ref mut r, _) | Loadw(ref mut r, _) => {
+        Movenum(ref mut r, _) | Ret(ref mut r) | Storewreg(ref mut r, _) | Loadw(ref mut r, _) | Jnz(ref mut r, ..)=> {
             r.regalloc(realregs);
             if r.deathday == *day && r.vr >= 0 {
                 realregs[r.rr as usize] = -1;
@@ -44,7 +44,23 @@ fn regaoflir(lir: &mut LowIrInstr, day: &mut i32, realregs: &mut [i32; GENEREGSI
                 }
             }
         }
-        Storewnum(..) => {}
+        Ceqw(ref mut r1, ref mut r2, ref mut rorn) => {
+            r1.regalloc(realregs);
+            r2.regalloc(realregs);
+            if let RegorNum::Reg(r3) = rorn {
+                r3.regalloc(realregs);
+                if r3.deathday == *day && r3.vr >= 0 {
+                    realregs[r2.rr as usize] = -1;
+                }
+            }
+            if r1.deathday == *day && r1.vr >= 0 {
+                realregs[r1.rr as usize] = -1;
+            }
+            if r2.deathday == *day && r2.vr >= 0 {
+                realregs[r2.rr as usize] = -1;
+            }
+        }
+        Storewnum(..) | Jmp(..) => {}
     }
 }
 

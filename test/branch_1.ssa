@@ -1,0 +1,19 @@
+function w $main() {
+@l0:
+	%a =l alloc4 4
+	%b =l alloc4 4
+	storew 22, %a
+	storew 43, %b
+	%t5 =w loadw %a
+	%t6 =w loadw %b
+	%t4 =w ceqw %t5, %t6
+	jnz %t4, @l1, @l2
+@l1:
+	storew 32, %a
+	jmp @l3
+@l2:
+	storew 54, %a
+@l3:
+	%t11 =w loadw %a
+	ret %t11
+}

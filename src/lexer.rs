@@ -1,8 +1,8 @@
 use super::parser::{Environment, FirstClassObj, Var, VarType};
 use super::*;
 
-const RESERVED_SIZE: usize = 8;
-const SIGNALS_SIZE: usize = 11;
+const RESERVED_SIZE: usize = 11;
+const SIGNALS_SIZE: usize = 10;
 
 pub static RESERVEDWORDS: [(&str, TokenType); RESERVED_SIZE] = [
     ("function", TokenType::Function),
@@ -13,6 +13,9 @@ pub static RESERVEDWORDS: [(&str, TokenType); RESERVED_SIZE] = [
     ("loadw", TokenType::Loadw),
     ("add", TokenType::Add),
     ("call", TokenType::Call),
+    ("ceqw", TokenType::Ceqw),
+    ("jnz", TokenType::Jnz),
+    ("jmp", TokenType::Jmp),
 ];
 
 pub static SIGNALS: [(&str, TokenType); SIGNALS_SIZE] = [
@@ -22,7 +25,6 @@ pub static SIGNALS: [(&str, TokenType); SIGNALS_SIZE] = [
     ("}", TokenType::Crbrace),
     ("$", TokenType::Dollar),
     (":", TokenType::Colon),
-    ("@", TokenType::Atm),
     ("=w", TokenType::Eqw),
     ("=l", TokenType::Eql),
     (",", TokenType::Comma),
@@ -44,7 +46,7 @@ pub enum TokenType {
     Ilit,
     Block,
     Colon,
-    Atm,
+    Blocklb,
     Alloc4,
     Eql,
     Eqw,
@@ -54,6 +56,9 @@ pub enum TokenType {
     Comma,
     Threedot,
     Call,
+    Ceqw,
+    Jnz,
+    Jmp,
     Eof,
 }
 
@@ -130,10 +135,9 @@ impl TokenMass {
     }
     pub fn getfco_n(&mut self, varenv: &mut Environment<&'static str, Var>) -> FirstClassObj {
         let ctk = self.getcurrent_token();
-        self.cpos += 1;
+        let lb = self.gettext_n();
         match ctk.tty {
             TokenType::Ident => {
-                let lb = self.gettext_n();
                 let var = varenv.get(&lb);
                 FirstClassObj::Variable(var)
             }
@@ -142,6 +146,11 @@ impl TokenMass {
                 panic!("getfco_n error. {:?}", self.getcurrent_token());
             }
         }
+    }
+    pub fn getblocklb_n(&mut self) -> &'static str {
+        let lb = &self.tks[self.cpos].get_text();
+        self.eq_tkty(TokenType::Blocklb);
+        lb
     }
     pub fn getcurrent_token(&self) -> Token {
         self.tks[self.cpos]
@@ -186,12 +195,18 @@ pub fn lex() -> TokenMass {
             continue;
         }
         // identification or reserved words
-        if pgchars[pos] == '%' || pgchars[pos].is_ascii_alphabetic() {
+        if pgchars[pos] == '@' || pgchars[pos] == '%' || pgchars[pos].is_ascii_alphabetic() {
             let mut pose = pos;
             let mut tty = TokenType::Ident;
             pose += 1;
             while pgchars[pose].is_ascii_alphanumeric() {
                 pose += 1;
+            }
+            if pgchars[pos] == '@' {
+                tty = TokenType::Blocklb;
+                tmass.push(Token::new(tty, pos+1, pose, -1));
+                pos = pose;
+                continue;
             }
             for i in 0..RESERVED_SIZE {
                 if RESERVEDWORDS[i].0 == &program[pos..pose] {

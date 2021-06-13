@@ -5,7 +5,11 @@ pub const GENEREGSIZE: usize = 7;
 fn regaoflir(lir: &mut LowIrInstr, day: &mut i32, realregs: &mut [i32; GENEREGSIZE]) {
     use LowIrInstr::*;
     match lir {
-        Movenum(ref mut r, _) | Ret(ref mut r) | Storewreg(ref mut r, _) | Loadw(ref mut r, _) | Jnz(ref mut r, ..)=> {
+        Movenum(ref mut r, _)
+        | Ret(ref mut r)
+        | Storewreg(ref mut r, _)
+        | Loadw(ref mut r, _)
+        | Jnz(ref mut r, ..) => {
             r.regalloc(realregs);
             if r.deathday == *day && r.vr >= 0 {
                 realregs[r.rr as usize] = -1;

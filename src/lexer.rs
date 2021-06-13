@@ -204,7 +204,7 @@ pub fn lex() -> TokenMass {
             }
             if pgchars[pos] == '@' {
                 tty = TokenType::Blocklb;
-                tmass.push(Token::new(tty, pos+1, pose, -1));
+                tmass.push(Token::new(tty, pos + 1, pose, -1));
                 pos = pose;
                 continue;
             }

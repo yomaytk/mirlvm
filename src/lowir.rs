@@ -135,18 +135,36 @@ impl fmt::Display for LowIrInstr {
                     usedrs.len()
                 )
             }
-            Ceqw(dst, src, rorn) => {
-                match rorn {
-                    RegorNum::Reg(r) => {
-                        write!(f, "\t{}r[{}]({}) <- {}r[{}]({}) == {}r[{}]({})", dst.regsize, dst.vr, dst.rr, src.regsize, src.vr, src.rr, r.regsize, r.vr, r.rr)
-                    }
-                    RegorNum::Num(num) => {
-                        write!(f, "\t{}r[{}]({}) <- {}r[{}]({}) == {}", dst.regsize, dst.vr, dst.rr, src.regsize, src.vr, src.rr, num)
-                    }
+            Ceqw(dst, src, rorn) => match rorn {
+                RegorNum::Reg(r) => {
+                    write!(
+                        f,
+                        "\t{}r[{}]({}) <- {}r[{}]({}) == {}r[{}]({})",
+                        dst.regsize,
+                        dst.vr,
+                        dst.rr,
+                        src.regsize,
+                        src.vr,
+                        src.rr,
+                        r.regsize,
+                        r.vr,
+                        r.rr
+                    )
                 }
-            }
+                RegorNum::Num(num) => {
+                    write!(
+                        f,
+                        "\t{}r[{}]({}) <- {}r[{}]({}) == {}",
+                        dst.regsize, dst.vr, dst.rr, src.regsize, src.vr, src.rr, num
+                    )
+                }
+            },
             Jnz(src, lb1, lb2) => {
-                write!(f, "\t{}r[{}]({})? go {}: {}", src.regsize, src.vr, src.rr, lb1, lb2)
+                write!(
+                    f,
+                    "\t{}r[{}]({})? go {}: {}",
+                    src.regsize, src.vr, src.rr, lb1, lb2
+                )
             }
             Jmp(lb) => {
                 write!(f, "\tjmp {}", lb)
@@ -319,7 +337,7 @@ fn evalparserinstr(
                 register_lifedata.insert(v1.freshnum, (dst.birthday, dst.deathday));
                 register_lifedata.insert(v2.freshnum, (src.birthday, src.deathday));
                 rbb.pushinstr(LowIrInstr::Add(dst, src), day);
-                return Some(dst)
+                return Some(dst);
             }
             panic!("Don't come here at your current level")
         }
@@ -339,18 +357,22 @@ fn evalparserinstr(
             Some(dst)
         }
         Ceqw(dstv, srcv, fco) => {
-            let dst = Register::newall(dstv.freshnum, *day+1, *day+1, dstv.ty.toregrefsize());
+            let dst = Register::newall(dstv.freshnum, *day + 1, *day + 1, dstv.ty.toregrefsize());
             register_lifedata.insert(dst.vr, (dst.birthday, dst.deathday));
-            let (srcbirth, _) = register_lifedata.get(&srcv.freshnum).unwrap_or_else(|| panic!("{:?} is not defined in Ceqw.", srcv));
-            let src = Register::newall(srcv.freshnum, *srcbirth, *day+1, srcv.ty.toregrefsize());
+            let (srcbirth, _) = register_lifedata
+                .get(&srcv.freshnum)
+                .unwrap_or_else(|| panic!("{:?} is not defined in Ceqw.", srcv));
+            let src = Register::newall(srcv.freshnum, *srcbirth, *day + 1, srcv.ty.toregrefsize());
             register_lifedata.insert(srcv.freshnum, (src.birthday, src.deathday));
             let rorn = fco2reg(fco, register_lifedata, *day);
             rbb.pushinstr(LowIrInstr::Ceqw(dst, src, rorn), day);
             None
         }
         Jnz(srcv, lb1, lb2) => {
-            let (srcbirth, _) = register_lifedata.get(&srcv.freshnum).unwrap_or_else(|| panic!("{:?} is not defined in Ceqw.", srcv));
-            let src = Register::newall(srcv.freshnum, *srcbirth, *day+1, srcv.ty.toregrefsize());
+            let (srcbirth, _) = register_lifedata
+                .get(&srcv.freshnum)
+                .unwrap_or_else(|| panic!("{:?} is not defined in Ceqw.", srcv));
+            let src = Register::newall(srcv.freshnum, *srcbirth, *day + 1, srcv.ty.toregrefsize());
             register_lifedata.insert(srcv.freshnum, (src.birthday, src.deathday));
             rbb.pushinstr(LowIrInstr::Jnz(src, lb1, lb2), day);
             None
@@ -362,25 +384,22 @@ fn evalparserinstr(
     }
 }
 
-fn fco2reg(fco: FirstClassObj, register_lifedata: &mut HashMap<i32, (i32, i32)>, day: i32) -> RegorNum {
+fn fco2reg(
+    fco: FirstClassObj,
+    register_lifedata: &mut HashMap<i32, (i32, i32)>,
+    day: i32,
+) -> RegorNum {
     match fco {
         FirstClassObj::Variable(var) => {
             if let Some((birthday, _)) = register_lifedata.get(&var.freshnum) {
-                let r = Register::newall(
-                    var.freshnum,
-                    *birthday,
-                    day + 1,
-                    var.ty.toregrefsize(),
-                );
+                let r = Register::newall(var.freshnum, *birthday, day + 1, var.ty.toregrefsize());
                 register_lifedata.insert(var.freshnum, (r.birthday, r.deathday));
                 RegorNum::Reg(r)
             } else {
                 panic!("{:?} is not defined", var);
             }
         }
-        FirstClassObj::Num(num) => {
-            RegorNum::Num(num)
-        }
+        FirstClassObj::Num(num) => RegorNum::Num(num),
     }
 }
 
@@ -401,10 +420,16 @@ fn registerlifeupdate(lpg: &mut LowIrProgram, register_lifedata: &mut HashMap<i3
             for rinstr in &mut rbb.instrs {
                 use LowIrInstr::*;
                 match rinstr {
-                    Movenum(ref mut r, _) | Storewreg(ref mut r, _) | Ret(ref mut r) | Loadw(ref mut r, _) | Jnz(ref mut r, ..) => {
+                    Movenum(ref mut r, _)
+                    | Storewreg(ref mut r, _)
+                    | Ret(ref mut r)
+                    | Loadw(ref mut r, _)
+                    | Jnz(ref mut r, ..) => {
                         decidereglife(r, register_lifedata);
                     }
-                    Movereg(.., ref mut r1, ref mut r2) | Add(ref mut r1, ref mut r2) | Ceqw(ref mut r1, ref mut r2, _) => {
+                    Movereg(.., ref mut r1, ref mut r2)
+                    | Add(ref mut r1, ref mut r2)
+                    | Ceqw(ref mut r1, ref mut r2, _) => {
                         decidereglife(r1, register_lifedata);
                         decidereglife(r2, register_lifedata);
                     }

@@ -337,10 +337,7 @@ fn parseargs(tmass: &mut TokenMass, varenv: &mut Environment<&'static str, Var>)
 }
 
 // parse function ...
-fn parsefun(
-    tmass: &mut TokenMass,
-    funenv: &mut Environment<&'static str, VarType>,
-) -> SsaFunction {
+fn parsefun(tmass: &mut TokenMass, funenv: &mut Environment<&'static str, VarType>) -> SsaFunction {
     tmass.assert_tkty(TokenType::Function);
     let functy = tmass.gettype_n();
     tmass.assert_tkty(TokenType::Dollar);

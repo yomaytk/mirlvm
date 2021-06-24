@@ -1,5 +1,5 @@
-use super::parser::*;
 use super::lexer::Binop;
+use super::parser::*;
 use super::*;
 use rega::GENEREGSIZE;
 use std::collections::HashMap;
@@ -124,9 +124,13 @@ impl fmt::Display for LowIrInstr {
                 };
                 let rhs = match r2 {
                     RegorNum::Num(num) => format!("{}", num),
-                    RegorNum::Reg(r) => format!("{}r[{}]({})", r.regsize, r.vr, r.rr)
+                    RegorNum::Reg(r) => format!("{}r[{}]({})", r.regsize, r.vr, r.rr),
                 };
-                write!(f,"\t{} {}r[{}]({}), {}", bop, r1.regsize, r1.vr, r1.rr, rhs)
+                write!(
+                    f,
+                    "\t{} {}r[{}]({}), {}",
+                    bop, r1.regsize, r1.vr, r1.rr, rhs
+                )
             }
             Call(r, lb, args, usedrs) => {
                 write!(
@@ -345,7 +349,8 @@ fn evalparserinstr(
                     let (v2birth, _) = register_lifedata
                         .get(&v2.freshnum)
                         .unwrap_or_else(|| panic!("{:?} is not defined.", v2));
-                    let src = Register::newall(v2.freshnum, *v2birth, *day + 1, v2.ty.toregrefsize());
+                    let src =
+                        Register::newall(v2.freshnum, *v2birth, *day + 1, v2.ty.toregrefsize());
                     register_lifedata.insert(v2.freshnum, (src.birthday, src.deathday));
                     rbb.pushinstr(LowIrInstr::Bop(binop, dst, RegorNum::Reg(src)), day);
                 }
@@ -441,8 +446,7 @@ fn registerlifeupdate(lpg: &mut LowIrProgram, register_lifedata: &mut HashMap<i3
                     | Jnz(ref mut r, ..) => {
                         decidereglife(r, register_lifedata);
                     }
-                    Movereg(.., ref mut r1, ref mut r2)
-                    | Ceqw(ref mut r1, ref mut r2, _) => {
+                    Movereg(.., ref mut r1, ref mut r2) | Ceqw(ref mut r1, ref mut r2, _) => {
                         decidereglife(r1, register_lifedata);
                         decidereglife(r2, register_lifedata);
                     }

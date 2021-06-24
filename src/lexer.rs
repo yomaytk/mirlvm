@@ -99,8 +99,8 @@ impl TokenMass {
             true
         } else {
             match (tty, tk) {
-                (TokenType::Bop(_), TokenType::Bop(_)) => { true }
-                _ => false
+                (TokenType::Bop(_), TokenType::Bop(_)) => true,
+                _ => false,
             }
         }
     }
@@ -170,9 +170,15 @@ impl TokenMass {
         let tty = self.cur_tkty();
         use TokenType::*;
         match tty {
-            Bop(Binop::Add) => { self.cpos += 1; Some(Binop::Add) }
-            Bop(Binop::Sub) => { self.cpos += 1; Some(Binop::Sub) }
-            _ => None
+            Bop(Binop::Add) => {
+                self.cpos += 1;
+                Some(Binop::Add)
+            }
+            Bop(Binop::Sub) => {
+                self.cpos += 1;
+                Some(Binop::Sub)
+            }
+            _ => None,
         }
     }
     pub fn getfuncdata(&mut self) -> (&'static str, VarType) {

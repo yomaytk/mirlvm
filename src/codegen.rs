@@ -1,6 +1,6 @@
+use super::lexer::Binop;
 use super::lowir::{LowIrInstr, LowIrProgram, RegorNum};
 use super::*;
-use super::lexer::Binop;
 
 const REGQUANTITY: usize = 13;
 const NORMALREGQUANTITY: usize = 7;
@@ -103,11 +103,15 @@ pub fn gen_x64code(lirpg: LowIrProgram) {
                     Bop(binop, r1, r2) => {
                         let op = match binop {
                             Binop::Add => "add",
-                            Binop::Sub => "sub"
+                            Binop::Sub => "sub",
                         };
                         match r2 {
-                            RegorNum::Reg(r) => { print!("\t{} {}, {}\n", op, selreg(r1), selreg(r)); }
-                            RegorNum::Num(num) => { print!("\t{} {}, {}\n", op, selreg(r1), num); }
+                            RegorNum::Reg(r) => {
+                                print!("\t{} {}, {}\n", op, selreg(r1), selreg(r));
+                            }
+                            RegorNum::Num(num) => {
+                                print!("\t{} {}, {}\n", op, selreg(r1), num);
+                            }
                         }
                     }
                     Call(r1, lb, args, mut usedrs) => {
@@ -145,7 +149,10 @@ pub fn gen_x64code(lirpg: LowIrProgram) {
                             }
                         }
                         print!("\tsete {}\n", X64_REG8[r1.rr as usize]);
-                        print!("\tmovzb {}, {}\n", X64_REG64[r1.rr as usize], X64_REG8[r1.rr as usize]);
+                        print!(
+                            "\tmovzb {}, {}\n",
+                            X64_REG64[r1.rr as usize], X64_REG8[r1.rr as usize]
+                        );
                     }
                     Jnz(r1, lb1, lb2) => {
                         print!("\tcmp {}, 0\n", selreg(r1));

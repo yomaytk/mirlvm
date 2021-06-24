@@ -1,5 +1,6 @@
 use super::lowir::{LowIrInstr, LowIrProgram, RegorNum};
 use super::*;
+use super::lexer::Binop;
 
 const REGQUANTITY: usize = 13;
 const NORMALREGQUANTITY: usize = 7;
@@ -54,9 +55,13 @@ pub fn gen_x64code(lirpg: LowIrProgram) {
     print!(".globl main\n");
 
     for func in lirpg.funcs {
+        let stmsize = (func.framesize + 15) / 16 * 16;
         print!("{}:\n", func.lb);
         print!("\tpush rbp\n");
         print!("\tmov rbp, rsp\n");
+        if stmsize > 0 {
+            print!("\tsub rsp, {}\n", stmsize);
+        }
         for bb in func.rbbs {
             print!("{}:\n", bb.lb);
             for instr in bb.instrs {
@@ -70,6 +75,9 @@ pub fn gen_x64code(lirpg: LowIrProgram) {
                     }
                     Ret(r) => {
                         print!("\tmov {}, {}\n", selrax(r.regsize as usize), selreg(r));
+                        if stmsize > 0 {
+                            print!("\tadd rsp, {}\n", stmsize);
+                        }
                         print!("\tpop rbp\n");
                         print!("\tret\n");
                     }
@@ -92,10 +100,17 @@ pub fn gen_x64code(lirpg: LowIrProgram) {
                             offset
                         );
                     }
-                    Add(r1, r2) => {
-                        print!("\tadd {}, {}\n", selreg(r1), selreg(r2));
+                    Bop(binop, r1, r2) => {
+                        let op = match binop {
+                            Binop::Add => "add",
+                            Binop::Sub => "sub"
+                        };
+                        match r2 {
+                            RegorNum::Reg(r) => { print!("\t{} {}, {}\n", op, selreg(r1), selreg(r)); }
+                            RegorNum::Num(num) => { print!("\t{} {}, {}\n", op, selreg(r1), num); }
+                        }
                     }
-                    Call(r1, lb, args, usedrs) => {
+                    Call(r1, lb, args, mut usedrs) => {
                         for i in &usedrs {
                             print!("\tpush {}\n", X64_REG64[*i]);
                         }
@@ -114,6 +129,7 @@ pub fn gen_x64code(lirpg: LowIrProgram) {
                             }
                         }
                         print!("\tcall {}\n", lb);
+                        usedrs.reverse();
                         for i in usedrs {
                             print!("\tpop {}\n", X64_REG64[i]);
                         }
@@ -129,6 +145,7 @@ pub fn gen_x64code(lirpg: LowIrProgram) {
                             }
                         }
                         print!("\tsete {}\n", X64_REG8[r1.rr as usize]);
+                        print!("\tmovzb {}, {}\n", X64_REG64[r1.rr as usize], X64_REG8[r1.rr as usize]);
                     }
                     Jnz(r1, lb1, lb2) => {
                         print!("\tcmp {}, 0\n", selreg(r1));

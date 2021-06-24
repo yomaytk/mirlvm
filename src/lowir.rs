@@ -1,4 +1,5 @@
 use super::parser::*;
+use super::lexer::Binop;
 use super::*;
 use rega::GENEREGSIZE;
 use std::collections::HashMap;
@@ -75,7 +76,7 @@ pub enum LowIrInstr {
     Storewreg(Register, i32),
     Storewnum(i32, i32),
     Loadw(Register, i32),
-    Add(Register, Register),
+    Bop(Binop, Register, RegorNum),
     Call(Register, Label, Vec<RegorNum>, Vec<usize>),
     Ceqw(Register, Register, RegorNum),
     Jnz(Register, Label, Label),
@@ -116,12 +117,16 @@ impl fmt::Display for LowIrInstr {
                     r.regsize, r.vr, r.rr, offset
                 )
             }
-            Add(r1, r2) => {
-                write!(
-                    f,
-                    "\tadd {}r[{}]({}), {}r[{}]({})",
-                    r1.regsize, r1.vr, r1.rr, r2.regsize, r2.vr, r2.rr
-                )
+            Bop(binop, r1, r2) => {
+                let bop = match binop {
+                    Binop::Add => "add",
+                    Binop::Sub => "sub",
+                };
+                let rhs = match r2 {
+                    RegorNum::Num(num) => format!("{}", num),
+                    RegorNum::Reg(r) => format!("{}r[{}]({})", r.regsize, r.vr, r.rr)
+                };
+                write!(f,"\t{} {}r[{}]({}), {}", bop, r1.regsize, r1.vr, r1.rr, rhs)
             }
             Call(r, lb, args, usedrs) => {
                 write!(
@@ -251,6 +256,7 @@ fn evalparserinstr(
                 src.deathday = *day + 1;
                 rbb.pushinstr(LowIrInstr::Movenum(src, num), day);
                 register_lifedata.insert(src.vr, (src.birthday, src.deathday));
+                rbb.pushinstr(LowIrInstr::Ret(src), day);
                 Some(src)
             }
         },
@@ -323,23 +329,31 @@ fn evalparserinstr(
             rbb.pushinstr(LowIrInstr::Loadw(src, *varsp), day);
             Some(src)
         }
-        Add(lfco, rfco) => {
-            // TODO (Assume lfco and rfco are register)
-            if let (FirstClassObj::Variable(v1), FirstClassObj::Variable(v2)) = (lfco, rfco) {
+        Bop(binop, lfco, rfco) => {
+            let dst;
+            if let FirstClassObj::Variable(v1) = lfco {
                 let (v1birth, _) = register_lifedata
                     .get(&v1.freshnum)
                     .unwrap_or_else(|| panic!("{:?} is not defined.", v1));
-                let (v2birth, _) = register_lifedata
-                    .get(&v2.freshnum)
-                    .unwrap_or_else(|| panic!("{:?} is not defined.", v2));
-                let dst = Register::newall(v1.freshnum, *v1birth, *day + 1, v1.ty.toregrefsize());
-                let src = Register::newall(v2.freshnum, *v2birth, *day + 1, v2.ty.toregrefsize());
+                dst = Register::newall(v1.freshnum, *v1birth, *day + 1, v1.ty.toregrefsize());
                 register_lifedata.insert(v1.freshnum, (dst.birthday, dst.deathday));
-                register_lifedata.insert(v2.freshnum, (src.birthday, src.deathday));
-                rbb.pushinstr(LowIrInstr::Add(dst, src), day);
-                return Some(dst);
+            } else {
+                panic!("Bop lhs error in lowir.{:?}", lfco);
             }
-            panic!("Don't come here at your current level")
+            match rfco {
+                FirstClassObj::Variable(v2) => {
+                    let (v2birth, _) = register_lifedata
+                        .get(&v2.freshnum)
+                        .unwrap_or_else(|| panic!("{:?} is not defined.", v2));
+                    let src = Register::newall(v2.freshnum, *v2birth, *day + 1, v2.ty.toregrefsize());
+                    register_lifedata.insert(v2.freshnum, (src.birthday, src.deathday));
+                    rbb.pushinstr(LowIrInstr::Bop(binop, dst, RegorNum::Reg(src)), day);
+                }
+                FirstClassObj::Num(num) => {
+                    rbb.pushinstr(LowIrInstr::Bop(binop, dst, RegorNum::Num(num)), day);
+                }
+            }
+            Some(dst)
         }
         Call(retty, funlb, args) => {
             let dst = Register::newall(
@@ -428,7 +442,6 @@ fn registerlifeupdate(lpg: &mut LowIrProgram, register_lifedata: &mut HashMap<i3
                         decidereglife(r, register_lifedata);
                     }
                     Movereg(.., ref mut r1, ref mut r2)
-                    | Add(ref mut r1, ref mut r2)
                     | Ceqw(ref mut r1, ref mut r2, _) => {
                         decidereglife(r1, register_lifedata);
                         decidereglife(r2, register_lifedata);
@@ -439,6 +452,12 @@ fn registerlifeupdate(lpg: &mut LowIrProgram, register_lifedata: &mut HashMap<i3
                             if let RegorNum::Reg(r) = arg {
                                 decidereglife(r, register_lifedata);
                             }
+                        }
+                    }
+                    Bop(_, ref mut r1, ref mut r2) => {
+                        decidereglife(r1, register_lifedata);
+                        if let RegorNum::Reg(ref mut r) = r2 {
+                            decidereglife(r, register_lifedata);
                         }
                     }
                     Storewnum(..) | Jmp(..) => {}

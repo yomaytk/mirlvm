@@ -122,7 +122,7 @@ pub enum SsaInstr {
     Alloc4(Var, i32),
     Storew(FirstClassObj, Var),
     Loadw(Var),
-    Add(FirstClassObj, FirstClassObj),
+    Bop(Binop, FirstClassObj, FirstClassObj),
     Call(VarType, Label, Vec<FirstClassObj>),
     Ceqw(Var, Var, FirstClassObj),
     Jnz(Var, Label, Label),
@@ -151,11 +151,11 @@ impl ValueType {
 }
 
 #[derive(Clone, Debug, PartialEq)]
-pub struct Environment<T: Eq + std::hash::Hash + std::fmt::Debug, U: Clone> {
+pub struct Environment<T: Eq + std::hash::Hash + std::fmt::Debug, U: Clone + std::fmt::Debug> {
     vars: HashMap<T, U>,
 }
 
-impl<T: Eq + std::hash::Hash + std::fmt::Debug, U: Clone> Environment<T, U> {
+impl<T: Eq + std::hash::Hash + std::fmt::Debug, U: Clone + std::fmt::Debug> Environment<T, U> {
     pub fn new() -> Self {
         Self {
             vars: HashMap::new(),
@@ -167,7 +167,7 @@ impl<T: Eq + std::hash::Hash + std::fmt::Debug, U: Clone> Environment<T, U> {
         if let Some(v) = r {
             return v.clone();
         } else {
-            panic!("{:?}", key);
+            panic!("{:?}\n{:?}", key, self.vars);
         }
     }
     fn append(&mut self, key: T, value: U) {
@@ -187,12 +187,12 @@ fn parseinstrrhs(
         assert!(rhs.ty == VarType::Ptr2Word || rhs.ty == VarType::Ptr2Long);
         return SsaInstr::Loadw(rhs);
     }
-    // add
-    if tmass.eq_tkty(TokenType::Add) {
+    // binop
+    if let Some(binop) = tmass.getbinop() {
         let lhs = tmass.getfirstclassobj_n(varenv);
         tmass.assert_tkty(TokenType::Comma);
         let rhs = tmass.getfirstclassobj_n(varenv);
-        return SsaInstr::Add(lhs, rhs);
+        return SsaInstr::Bop(binop, lhs, rhs);
     }
     // call
     if tmass.eq_tkty(TokenType::Call) {
@@ -366,8 +366,9 @@ pub fn parse(tmass: &mut TokenMass) -> SsaProgram {
     let mut funenv = Environment::new();
     loop {
         if tmass.cur_tkty() == TokenType::Function {
+            let (funlb, retty) = tmass.getfuncdata();
+            funenv.append(funlb, retty);
             let func = parsefun(tmass, &mut funenv);
-            funenv.append(func.name, func.retty.clone());
             funcs.push(func);
             continue;
         }

@@ -1,7 +1,7 @@
 use super::parser::{Environment, FirstClassObj, Var, VarType};
 use super::*;
 
-const RESERVED_SIZE: usize = 11;
+const RESERVED_SIZE: usize = 12;
 const SIGNALS_SIZE: usize = 10;
 
 pub static RESERVEDWORDS: [(&str, TokenType); RESERVED_SIZE] = [
@@ -11,7 +11,8 @@ pub static RESERVEDWORDS: [(&str, TokenType); RESERVED_SIZE] = [
     ("alloc4", TokenType::Alloc4),
     ("storew", TokenType::Storew),
     ("loadw", TokenType::Loadw),
-    ("add", TokenType::Add),
+    ("add", TokenType::Bop(Binop::Add)),
+    ("sub", TokenType::Bop(Binop::Sub)),
     ("call", TokenType::Call),
     ("ceqw", TokenType::Ceqw),
     ("jnz", TokenType::Jnz),
@@ -32,6 +33,12 @@ pub static SIGNALS: [(&str, TokenType); SIGNALS_SIZE] = [
 ];
 
 #[derive(Clone, Copy, Debug, PartialEq)]
+pub enum Binop {
+    Add,
+    Sub,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq)]
 pub enum TokenType {
     Function,
     Word,
@@ -50,7 +57,7 @@ pub enum TokenType {
     Alloc4,
     Eql,
     Eqw,
-    Add,
+    Bop(Binop),
     Storew,
     Loadw,
     Comma,
@@ -86,11 +93,15 @@ impl TokenMass {
         self.tks[self.cpos].tty
     }
     pub fn eq_tkty(&mut self, tk: TokenType) -> bool {
-        if self.cur_tkty() == tk {
+        let tty = self.cur_tkty();
+        if tty == tk {
             self.cpos += 1;
             true
         } else {
-            false
+            match (tty, tk) {
+                (TokenType::Bop(_), TokenType::Bop(_)) => { true }
+                _ => false
+            }
         }
     }
     pub fn getnum_n(&mut self) -> i32 {
@@ -154,6 +165,24 @@ impl TokenMass {
     }
     pub fn getcurrent_token(&self) -> Token {
         self.tks[self.cpos]
+    }
+    pub fn getbinop(&mut self) -> Option<Binop> {
+        let tty = self.cur_tkty();
+        use TokenType::*;
+        match tty {
+            Bop(Binop::Add) => { self.cpos += 1; Some(Binop::Add) }
+            Bop(Binop::Sub) => { self.cpos += 1; Some(Binop::Sub) }
+            _ => None
+        }
+    }
+    pub fn getfuncdata(&mut self) -> (&'static str, VarType) {
+        assert_eq!(self.cur_tkty(), TokenType::Function);
+        self.cpos += 1;
+        let retty = self.gettype_n();
+        self.assert_tkty(TokenType::Dollar);
+        let funlb = self.gettext_n();
+        self.cpos -= 4;
+        (funlb, retty)
     }
 }
 

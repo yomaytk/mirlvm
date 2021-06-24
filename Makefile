@@ -8,11 +8,12 @@ $(BUILD):
 	cargo build
 
 alltests: $(BUILD)
-	@$(BIN) $(TEST)/branch_1.ssa > a.s
+	@$(BIN) $(TEST)/fib.ssa > a.s
 	gcc a.s
 
 debug: $(BUILD)
-	@$(BIN) $(OPTION) $(TEST)/$(SSAFILE)
+	@$(BIN) $(OPTION) $(TEST)/$(SSAFILE) > debug.s
+	gcc debug.s
 
 clean:
 	cargo clean

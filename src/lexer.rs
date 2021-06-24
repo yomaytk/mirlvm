@@ -1,10 +1,7 @@
 use super::parser::{Environment, FirstClassObj, Var, VarType};
 use super::*;
 
-const RESERVED_SIZE: usize = 12;
-const SIGNALS_SIZE: usize = 10;
-
-pub static RESERVEDWORDS: [(&str, TokenType); RESERVED_SIZE] = [
+pub static RESERVEDWORDS: &[(&str, TokenType)] = &[
     ("function", TokenType::Function),
     ("w", TokenType::Word),
     ("ret", TokenType::Ret),
@@ -19,7 +16,7 @@ pub static RESERVEDWORDS: [(&str, TokenType); RESERVED_SIZE] = [
     ("jmp", TokenType::Jmp),
 ];
 
-pub static SIGNALS: [(&str, TokenType); SIGNALS_SIZE] = [
+pub static SIGNALS: &[(&str, TokenType)] = &[
     ("(", TokenType::Lbrace),
     (")", TokenType::Rbrace),
     ("{", TokenType::Clbrace),
@@ -30,6 +27,7 @@ pub static SIGNALS: [(&str, TokenType); SIGNALS_SIZE] = [
     ("=l", TokenType::Eql),
     (",", TokenType::Comma),
     ("...", TokenType::Threedot),
+    ("#", TokenType::Hash),
 ];
 
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -66,6 +64,7 @@ pub enum TokenType {
     Ceqw,
     Jnz,
     Jmp,
+    Hash,
     Eof,
 }
 
@@ -229,6 +228,12 @@ pub fn lex() -> TokenMass {
             pos += 1;
             continue;
         }
+        if pgchars[pos] == '#' {
+            while pgchars[pos] != '\n' {
+                pos += 1;
+            }
+            continue;
+        }
         // identification or reserved words
         if pgchars[pos] == '@' || pgchars[pos] == '%' || pgchars[pos].is_ascii_alphabetic() {
             let mut pose = pos;
@@ -243,9 +248,9 @@ pub fn lex() -> TokenMass {
                 pos = pose;
                 continue;
             }
-            for i in 0..RESERVED_SIZE {
-                if RESERVEDWORDS[i].0 == &program[pos..pose] {
-                    tty = RESERVEDWORDS[i].1;
+            for resw in RESERVEDWORDS {
+                if resw.0 == &program[pos..pose] {
+                    tty = resw.1;
                     break;
                 }
             }
@@ -266,11 +271,11 @@ pub fn lex() -> TokenMass {
         }
         // signals
         let mut nextloop = false;
-        for i in 0..SIGNALS_SIZE {
-            let signal = SIGNALS[i].0;
+        for sig in SIGNALS {
+            let signal = sig.0;
             let pose = pos + signal.len();
             if signal == &program[pos..pose] {
-                let tty = SIGNALS[i].1;
+                let tty = sig.1;
                 nextloop = true;
                 tmass.push(Token::new(tty, pos, pose, -1));
                 pos = pose;

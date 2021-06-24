@@ -1,3 +1,5 @@
+# calculate 10'st fibonacci numbers
+
 function w $fib(w %t0) {
 @l0:
 	%t =l alloc4 4

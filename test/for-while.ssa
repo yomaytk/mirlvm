@@ -1,0 +1,38 @@
+function w $main() {
+@l0:
+	%i =l alloc4 4
+	%c =l alloc4 4
+	%res =l alloc4 4
+	storew 0, %c
+	storew 0, %res
+	storew 0, %i
+@l1:
+	%t7 =w loadw %i
+	%t6 =w csltw %t7, 5
+	jnz %t6, @l2, @l3
+@l2:
+	storew 0, %c
+@l4:
+	%t12 =w loadw %c
+	%t13 =w loadw %i
+	%t11 =w csltw %t12, %t13
+	jnz %t11, @l5, @l6
+@l5:
+	%t16 =w loadw %res
+	%t17 =w loadw %c
+	%t15 =w add %t16, %t17
+	storew %t15, %res
+	%t19 =w loadw %c
+	%t18 =w add %t19, 1
+	storew %t18, %c
+	jmp @l4
+@l6:
+	%t21 =w loadw %i
+	%t20 =w add %t21, 1
+	storew %t20, %i
+	jmp @l1
+@l3:
+	%t22 =w loadw %res
+	ret %t22
+}
+

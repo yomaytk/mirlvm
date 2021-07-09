@@ -115,6 +115,12 @@ pub enum FirstClassObj {
     Num(i32),
 }
 
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub enum CompOp {
+    Ceqw,
+    Csltw,
+}
+
 #[derive(Clone, Debug, PartialEq)]
 pub enum SsaInstr {
     Ret(FirstClassObj),
@@ -124,7 +130,7 @@ pub enum SsaInstr {
     Loadw(Var),
     Bop(Binop, FirstClassObj, FirstClassObj),
     Call(VarType, Label, Vec<FirstClassObj>),
-    Ceqw(Var, Var, FirstClassObj),
+    Comp(CompOp, Var, Var, FirstClassObj),
     Jnz(Var, Label, Label),
     Jmp(Label),
 }
@@ -257,14 +263,20 @@ fn parseinstroverall(
             varenv.append(var.name, var.clone());
             return SsaInstr::Alloc4(var, rhs);
         }
-        // ceqw
-        if tmass.eq_tkty(TokenType::Ceqw) {
+        // ceqw, csltw
+        let ctkty = tmass.cur_tkty();
+        if ctkty == TokenType::Ceqw || ctkty == TokenType::Csltw {
+            tmass.cpos += 1;
             let lhs = tmass.getvar_n(varenv);
             tmass.assert_tkty(TokenType::Comma);
             let rhs = tmass.getfco_n(varenv);
             var.ty = VarType::Word;
             varenv.append(var.name, var.clone());
-            return SsaInstr::Ceqw(var, lhs, rhs);
+            return if ctkty == TokenType::Ceqw {
+                SsaInstr::Comp(CompOp::Ceqw, var, lhs, rhs)
+            } else {
+                SsaInstr::Comp(CompOp::Csltw, var, lhs, rhs)
+            };
         }
         let rhs = parseinstrrhs(tmass, varenv, funenv);
         varenv.append(var.name, var.clone());

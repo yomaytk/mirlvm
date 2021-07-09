@@ -78,7 +78,7 @@ pub enum LowIrInstr {
     Loadw(Register, i32),
     Bop(Binop, Register, RegorNum),
     Call(Register, Label, Vec<RegorNum>, Vec<usize>),
-    Ceqw(Register, Register, RegorNum),
+    Comp(CompOp, Register, Register, RegorNum),
     Jnz(Register, Label, Label),
     Jmp(Label),
 }
@@ -144,21 +144,38 @@ impl fmt::Display for LowIrInstr {
                     usedrs.len()
                 )
             }
-            Ceqw(dst, src, rorn) => match rorn {
+            Comp(op, dst, src, rorn) => match rorn {
                 RegorNum::Reg(r) => {
-                    write!(
-                        f,
-                        "\t{}r[{}]({}) <- {}r[{}]({}) == {}r[{}]({})",
-                        dst.regsize,
-                        dst.vr,
-                        dst.rr,
-                        src.regsize,
-                        src.vr,
-                        src.rr,
-                        r.regsize,
-                        r.vr,
-                        r.rr
-                    )
+                    if *op == CompOp::Ceqw {
+                        write!(
+                            f,
+                            "\t{}r[{}]({}) <- {}r[{}]({}) == {}r[{}]({})",
+                            dst.regsize,
+                            dst.vr,
+                            dst.rr,
+                            src.regsize,
+                            src.vr,
+                            src.rr,
+                            r.regsize,
+                            r.vr,
+                            r.rr
+                        )
+                    } else {
+                        assert_eq!(*op, CompOp::Csltw);
+                        write!(
+                            f,
+                            "\t{}r[{}]({}) <- {}r[{}]({}) < {}r[{}]({})",
+                            dst.regsize,
+                            dst.vr,
+                            dst.rr,
+                            src.regsize,
+                            src.vr,
+                            src.rr,
+                            r.regsize,
+                            r.vr,
+                            r.rr
+                        )
+                    }
                 }
                 RegorNum::Num(num) => {
                     write!(
@@ -375,7 +392,7 @@ fn evalparserinstr(
             rbb.pushinstr(LowIrInstr::Call(dst, funlb, newargs, vec![]), day);
             Some(dst)
         }
-        Ceqw(dstv, srcv, fco) => {
+        Comp(cop, dstv, srcv, fco) => {
             let dst = Register::newall(dstv.freshnum, *day + 1, *day + 1, dstv.ty.toregrefsize());
             register_lifedata.insert(dst.vr, (dst.birthday, dst.deathday));
             let (srcbirth, _) = register_lifedata
@@ -384,7 +401,7 @@ fn evalparserinstr(
             let src = Register::newall(srcv.freshnum, *srcbirth, *day + 1, srcv.ty.toregrefsize());
             register_lifedata.insert(srcv.freshnum, (src.birthday, src.deathday));
             let rorn = fco2reg(fco, register_lifedata, *day);
-            rbb.pushinstr(LowIrInstr::Ceqw(dst, src, rorn), day);
+            rbb.pushinstr(LowIrInstr::Comp(cop, dst, src, rorn), day);
             None
         }
         Jnz(srcv, lb1, lb2) => {
@@ -446,7 +463,7 @@ fn registerlifeupdate(lpg: &mut LowIrProgram, register_lifedata: &mut HashMap<i3
                     | Jnz(ref mut r, ..) => {
                         decidereglife(r, register_lifedata);
                     }
-                    Movereg(.., ref mut r1, ref mut r2) | Ceqw(ref mut r1, ref mut r2, _) => {
+                    Movereg(.., ref mut r1, ref mut r2) | Comp(_, ref mut r1, ref mut r2, _) => {
                         decidereglife(r1, register_lifedata);
                         decidereglife(r2, register_lifedata);
                     }

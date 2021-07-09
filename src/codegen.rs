@@ -1,6 +1,7 @@
 use super::lexer::Binop;
 use super::lowir::{LowIrInstr, LowIrProgram, RegorNum};
 use super::*;
+use parser::CompOp;
 
 const REGQUANTITY: usize = 13;
 const NORMALREGQUANTITY: usize = 7;
@@ -139,7 +140,7 @@ pub fn gen_x64code(lirpg: LowIrProgram) {
                         }
                         print!("\tmov {}, {}\n", selreg(r1), selrax(r1.regsize as usize));
                     }
-                    Ceqw(r1, r2, rorn) => {
+                    Comp(op, r1, r2, rorn) => {
                         match rorn {
                             RegorNum::Reg(r3) => {
                                 print!("\tcmp {}, {}\n", selreg(r2), selreg(r3));
@@ -148,7 +149,14 @@ pub fn gen_x64code(lirpg: LowIrProgram) {
                                 print!("\tcmp {}, {}\n", selreg(r2), num);
                             }
                         }
-                        print!("\tsete {}\n", X64_REG8[r1.rr as usize]);
+                        match op {
+                            CompOp::Ceqw => {
+                                print!("\tsete {}\n", X64_REG8[r1.rr as usize]);
+                            }
+                            CompOp::Csltw => {
+                                print!("\tsetl {}\n", X64_REG8[r1.rr as usize]);
+                            }
+                        }
                         print!(
                             "\tmovzb {}, {}\n",
                             X64_REG64[r1.rr as usize], X64_REG8[r1.rr as usize]

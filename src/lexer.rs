@@ -12,6 +12,7 @@ pub static RESERVEDWORDS: &[(&str, TokenType)] = &[
     ("sub", TokenType::Bop(Binop::Sub)),
     ("call", TokenType::Call),
     ("ceqw", TokenType::Ceqw),
+    ("csltw", TokenType::Csltw),
     ("jnz", TokenType::Jnz),
     ("jmp", TokenType::Jmp),
 ];
@@ -62,6 +63,7 @@ pub enum TokenType {
     Threedot,
     Call,
     Ceqw,
+    Csltw,
     Jnz,
     Jmp,
     Hash,

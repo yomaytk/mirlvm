@@ -15,6 +15,7 @@ pub static RESERVEDWORDS: &[(&str, TokenType)] = &[
     ("csltw", TokenType::Csltw),
     ("jnz", TokenType::Jnz),
     ("jmp", TokenType::Jmp),
+    ("phi", TokenType::Phi),
 ];
 
 pub static SIGNALS: &[(&str, TokenType)] = &[
@@ -29,6 +30,10 @@ pub static SIGNALS: &[(&str, TokenType)] = &[
     (",", TokenType::Comma),
     ("...", TokenType::Threedot),
     ("#", TokenType::Hash),
+    (">", TokenType::Rturbo),
+    ("<", TokenType::Lturbo),
+    (";", TokenType::Semi),
+    ("!", TokenType::Excla),
 ];
 
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -67,6 +72,11 @@ pub enum TokenType {
     Jnz,
     Jmp,
     Hash,
+    Phi,
+    Rturbo,
+    Lturbo,
+    Semi,
+    Excla,
     Eof,
 }
 
@@ -185,10 +195,18 @@ impl TokenMass {
     pub fn getfuncdata(&mut self) -> (&'static str, VarType) {
         assert_eq!(self.cur_tkty(), TokenType::Function);
         self.cpos += 1;
-        let retty = self.gettype_n();
+        let retty;
+        let back;
+        if self.cur_tkty() == TokenType::Dollar {
+            retty = VarType::Void;
+            back = 3;
+        } else {
+            retty = self.gettype_n();
+            back = 4;
+        }
         self.assert_tkty(TokenType::Dollar);
         let funlb = self.gettext_n();
-        self.cpos -= 4;
+        self.cpos -= back;
         (funlb, retty)
     }
 }

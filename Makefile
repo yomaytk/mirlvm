@@ -12,8 +12,13 @@ alltests: $(BUILD)
 	gcc a.s
 
 debug: $(BUILD)
-	@$(BIN) $(OPTION) $(TEST)/$(SSAFILE) > debug.s
-	gcc debug.s
+	@if [ $(OPTION) = "null" ]; then \
+		$(BIN) $(TEST)/$(SSAFILE) > debug.s; \
+		gcc debug.s; \
+	else \
+		$(BIN) $(OPTION) $(TEST)/$(SSAFILE) > out_debug.txt; \
+		less out_debug.txt; \
+	fi
 
 clean:
 	cargo clean

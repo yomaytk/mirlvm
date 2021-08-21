@@ -19,6 +19,7 @@ pub enum VarType {
     Ptr2Word,
     Ptr2Long,
     TypeTuple(Vec<VarType>),
+    Void,
 }
 
 impl VarType {
@@ -34,6 +35,7 @@ impl VarType {
                 }
                 size
             }
+            Void => 1,
         }
     }
     pub fn toregrefsize(&self) -> i32 {
@@ -41,6 +43,7 @@ impl VarType {
         match self {
             Word => 4,
             Long | Ptr2Long | Ptr2Word => 8,
+            Void => 0,
             TypeTuple(_) => {
                 panic!("toregregsize error in TypeTuple.")
             }
@@ -100,12 +103,13 @@ impl Var {
 #[derive(Clone, Debug, PartialEq)]
 pub struct SsaBlock {
     pub lb: Label,
+    pub liveinstrcnt: i32,
     pub instrs: Vec<SsaInstr>,
 }
 
 impl SsaBlock {
     pub fn new(lb: Label, instrs: Vec<SsaInstr>) -> Self {
-        Self { lb, instrs }
+        Self { lb: lb, liveinstrcnt: 0, instrs: instrs }
     }
 }
 
@@ -122,7 +126,7 @@ pub enum CompOp {
 }
 
 #[derive(Clone, Debug, PartialEq)]
-pub enum SsaInstr {
+pub enum SsaInstrOp {
     Ret(FirstClassObj),
     Assign(ValueType, Var, Box<SsaInstr>),
     Alloc4(Var, i32),
@@ -133,6 +137,22 @@ pub enum SsaInstr {
     Comp(CompOp, Var, Var, FirstClassObj),
     Jnz(Var, Label, Label),
     Jmp(Label),
+    Phi(Vec<(Label, FirstClassObj)>),
+}
+
+#[derive(Clone, Debug, PartialEq)]
+pub struct SsaInstr {
+    pub op: SsaInstrOp,
+    pub living: bool,
+}
+
+impl SsaInstr {
+    fn new(op: SsaInstrOp) -> Self {
+        Self {
+            op,
+            living: false,
+        }
+    }
 }
 
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -191,14 +211,14 @@ fn parseinstrrhs(
     if tmass.eq_tkty(TokenType::Loadw) {
         let rhs = tmass.getvar_n(varenv);
         assert!(rhs.ty == VarType::Ptr2Word || rhs.ty == VarType::Ptr2Long);
-        return SsaInstr::Loadw(rhs);
+        return SsaInstr::new(SsaInstrOp::Loadw(rhs));
     }
     // binop
     if let Some(binop) = tmass.getbinop() {
         let lhs = tmass.getfirstclassobj_n(varenv);
         tmass.assert_tkty(TokenType::Comma);
         let rhs = tmass.getfirstclassobj_n(varenv);
-        return SsaInstr::Bop(binop, lhs, rhs);
+        return SsaInstr::new(SsaInstrOp::Bop(binop, lhs, rhs));
     }
     // call
     if tmass.eq_tkty(TokenType::Call) {
@@ -209,7 +229,7 @@ fn parseinstrrhs(
         let mut args = vec![];
         tmass.assert_tkty(TokenType::Lbrace);
         if tmass.eq_tkty(TokenType::Rbrace) {
-            return SsaInstr::Call(retty, funlb, args);
+            return SsaInstr::new(SsaInstrOp::Call(retty, funlb, args));
         }
         loop {
             if tmass.eq_tkty(TokenType::Threedot) {
@@ -221,7 +241,16 @@ fn parseinstrrhs(
             tmass.assert_tkty(TokenType::Comma);
         }
         tmass.eq_tkty(TokenType::Rbrace);
-        return SsaInstr::Call(retty, funlb, args);
+        return SsaInstr::new(SsaInstrOp::Call(retty, funlb, args));
+    }
+    if tmass.eq_tkty(TokenType::Phi) {
+        let mut pv = vec![];
+        while tmass.cur_tkty() == TokenType::Blocklb {
+            let lb = tmass.gettext_n();
+            let fco = tmass.getfirstclassobj_n(varenv);
+            pv.push((lb, fco));
+        }
+        return SsaInstr::new(SsaInstrOp::Phi(pv));
     }
     let curtk = tmass.getcurrent_token();
     panic!(
@@ -239,7 +268,7 @@ fn parseinstroverall(
     // ret
     if tmass.eq_tkty(TokenType::Ret) {
         let retnum = tmass.getfirstclassobj_n(varenv);
-        return SsaInstr::Ret(retnum);
+        return SsaInstr::new(SsaInstrOp::Ret(retnum));
     }
     // lhs =* rhs instruction
     if tmass.cur_tkty() == TokenType::Ident {
@@ -261,7 +290,7 @@ fn parseinstroverall(
             let rhs = tmass.getnum_n();
             var.ty = VarType::Ptr2Word;
             varenv.append(var.name, var.clone());
-            return SsaInstr::Alloc4(var, rhs);
+            return SsaInstr::new(SsaInstrOp::Alloc4(var, rhs));
         }
         // ceqw, csltw
         let ctkty = tmass.cur_tkty();
@@ -273,21 +302,21 @@ fn parseinstroverall(
             var.ty = VarType::Word;
             varenv.append(var.name, var.clone());
             return if ctkty == TokenType::Ceqw {
-                SsaInstr::Comp(CompOp::Ceqw, var, lhs, rhs)
+                SsaInstr::new(SsaInstrOp::Comp(CompOp::Ceqw, var, lhs, rhs))
             } else {
-                SsaInstr::Comp(CompOp::Csltw, var, lhs, rhs)
+                SsaInstr::new(SsaInstrOp::Comp(CompOp::Csltw, var, lhs, rhs))
             };
         }
         let rhs = parseinstrrhs(tmass, varenv, funenv);
         varenv.append(var.name, var.clone());
-        return SsaInstr::Assign(assignty, var, Box::new(rhs));
+        return SsaInstr::new(SsaInstrOp::Assign(assignty, var, Box::new(rhs)));
     }
     // storew
     if tmass.eq_tkty(TokenType::Storew) {
         let lhs = tmass.getfirstclassobj_n(varenv);
         tmass.assert_tkty(TokenType::Comma);
         let rhs = tmass.getvar_n(varenv);
-        return SsaInstr::Storew(lhs, rhs);
+        return SsaInstr::new(SsaInstrOp::Storew(lhs, rhs));
     }
     // jnz
     if tmass.eq_tkty(TokenType::Jnz) {
@@ -296,12 +325,12 @@ fn parseinstroverall(
         let blb1 = tmass.getblocklb_n();
         tmass.assert_tkty(TokenType::Comma);
         let blb2 = tmass.getblocklb_n();
-        return SsaInstr::Jnz(condvar, blb1, blb2);
+        return SsaInstr::new(SsaInstrOp::Jnz(condvar, blb1, blb2));
     }
     // jmp
     if tmass.eq_tkty(TokenType::Jmp) {
         let blb = tmass.getblocklb_n();
-        return SsaInstr::Jmp(blb);
+        return SsaInstr::new(SsaInstrOp::Jmp(blb));
     }
     panic!("parseinstroverall error. {:?}", tmass.getcurrent_token());
 }
@@ -351,7 +380,10 @@ fn parseargs(tmass: &mut TokenMass, varenv: &mut Environment<&'static str, Var>)
 // parse function ...
 fn parsefun(tmass: &mut TokenMass, funenv: &mut Environment<&'static str, VarType>) -> SsaFunction {
     tmass.assert_tkty(TokenType::Function);
-    let functy = tmass.gettype_n();
+    let mut functy = VarType::Void;
+    if tmass.cur_tkty() != TokenType::Dollar {
+        functy = tmass.gettype_n();
+    }
     tmass.assert_tkty(TokenType::Dollar);
     let funclb = tmass.gettext_n();
     let mut varenv = Environment::new();

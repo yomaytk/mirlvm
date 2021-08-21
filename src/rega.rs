@@ -60,7 +60,7 @@ fn regaoflir(lir: &mut LowIrInstr, day: &mut i32, realregs: &mut [i32; GENEREGSI
                 }
             }
         }
-        Comp(op, ref mut r1, ref mut r2, ref mut rorn) => {
+        Comp(_op, ref mut r1, ref mut r2, ref mut rorn) => {
             r1.regalloc(realregs);
             r2.regalloc(realregs);
             if let RegorNum::Reg(r3) = rorn {

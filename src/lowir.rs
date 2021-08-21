@@ -257,8 +257,8 @@ fn evalparserinstr(
     day: &mut i32,
     stackpointer: &mut i32,
 ) -> Option<Register> {
-    use SsaInstr::*;
-    match pinstr {
+    use SsaInstrOp::*;
+    match pinstr.op {
         Ret(fco) => match fco {
             FirstClassObj::Variable(var) => {
                 let mut src = Register::new(var.freshnum);
@@ -281,7 +281,7 @@ fn evalparserinstr(
                 Some(src)
             }
         },
-        Assign(valuety, var, pinstr) => {
+        Assign(_valuety, var, pinstr) => {
             let mut src = evalparserinstr(
                 *pinstr,
                 register_lifedata,
@@ -310,7 +310,7 @@ fn evalparserinstr(
             None
         }
         Storew(fco, dstvar) => {
-            let bytesize = dstvar.ty.stacksize();
+            let _bytesize = dstvar.ty.stacksize();
             // variable stack pointer
             let varsp = varstackdata
                 .get(&dstvar.freshnum)
@@ -417,6 +417,7 @@ fn evalparserinstr(
             rbb.pushinstr(LowIrInstr::Jmp(lb), day);
             None
         }
+        Phi(_) => None,
     }
 }
 
@@ -508,10 +509,12 @@ pub fn genlowir(ppg: SsaProgram) -> LowIrProgram {
         let mut stackpointer = 0;
         // function arguments
         processfunarguments(&pfun.args, &mut register_lifedata);
-        // panic!("{:?}", register_lifedata);
         for pbb in pfun.bls {
             let mut rbb = LowIrBlock::new(pbb.lb);
             for instr in pbb.instrs {
+                if !instr.living {
+                    continue;
+                }
                 evalparserinstr(
                     instr,
                     &mut register_lifedata,

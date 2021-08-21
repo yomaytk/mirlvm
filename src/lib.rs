@@ -7,9 +7,10 @@ pub mod lexer;
 pub mod lowir;
 pub mod parser;
 pub mod rega;
+pub mod ssaopt;
 
 type Label = &'static str;
-type VarName = String;
+type VarName = &'static str;
 
 pub static PROGRAM: Lazy<String> = Lazy::new(|| {
     let file: String = env::args().collect::<Vec<String>>().last().unwrap().clone();

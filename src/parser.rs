@@ -103,13 +103,15 @@ impl Var {
 #[derive(Clone, Debug, PartialEq)]
 pub struct SsaBlock {
     pub lb: Label,
-    pub liveinstrcnt: i32,
     pub instrs: Vec<SsaInstr>,
 }
 
 impl SsaBlock {
     pub fn new(lb: Label, instrs: Vec<SsaInstr>) -> Self {
-        Self { lb: lb, liveinstrcnt: 0, instrs: instrs }
+        Self {
+            lb: lb,
+            instrs: instrs,
+        }
     }
 }
 
@@ -144,6 +146,7 @@ pub enum SsaInstrOp {
 pub struct SsaInstr {
     pub op: SsaInstrOp,
     pub living: bool,
+    pub bblb: Label,
 }
 
 impl SsaInstr {
@@ -151,6 +154,7 @@ impl SsaInstr {
         Self {
             op,
             living: false,
+            bblb: "",
         }
     }
 }

@@ -41,7 +41,7 @@ fn main() {
     // SSA optical phase
     // remove useless instr
     removeuselessinstr(&mut ssaprogram);
-    
+
     if option == "--out-ssair_1" {
         for func in &ssaprogram.funcs {
             println!("function {}", func.name);

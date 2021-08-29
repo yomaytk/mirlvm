@@ -1,4 +1,4 @@
-use super::parser::{Environment, FirstClassObj, Var, VarType};
+use super::parser::{Environment, FirstClassObj, Var, VarType, ValueType};
 use super::*;
 
 pub static RESERVEDWORDS: &[(&str, TokenType)] = &[
@@ -16,6 +16,8 @@ pub static RESERVEDWORDS: &[(&str, TokenType)] = &[
     ("jnz", TokenType::Jnz),
     ("jmp", TokenType::Jmp),
     ("phi", TokenType::Phi),
+    ("data", TokenType::Data),
+    ("align", TokenType::Align),
 ];
 
 pub static SIGNALS: &[(&str, TokenType)] = &[
@@ -27,6 +29,7 @@ pub static SIGNALS: &[(&str, TokenType)] = &[
     (":", TokenType::Colon),
     ("=w", TokenType::Eqw),
     ("=l", TokenType::Eql),
+    ("=", TokenType::Eq),
     (",", TokenType::Comma),
     ("...", TokenType::Threedot),
     ("#", TokenType::Hash),
@@ -61,6 +64,7 @@ pub enum TokenType {
     Alloc4,
     Eql,
     Eqw,
+    Eq,
     Bop(Binop),
     Storew,
     Loadw,
@@ -76,7 +80,9 @@ pub enum TokenType {
     Rturbo,
     Lturbo,
     Semi,
+    Data,
     Excla,
+    Align,
     Eof,
 }
 
@@ -96,7 +102,7 @@ impl TokenMass {
     fn push(&mut self, tk: Token) {
         self.tks.push(tk)
     }
-    pub fn assert_tkty(&mut self, tty: TokenType) {
+    pub fn as_tkty(&mut self, tty: TokenType) {
         assert_eq!(self.tks[self.cpos].tty, tty);
         self.cpos += 1;
     }
@@ -127,26 +133,28 @@ impl TokenMass {
         self.cpos += 1;
         res
     }
-    pub fn getfirstclassobj_n(&mut self, varenv: &Environment<&'static str, Var>) -> FirstClassObj {
-        let tty = self.tks[self.cpos].tty;
-        self.cpos += 1;
-        if tty == TokenType::Ident {
-            return FirstClassObj::Variable(varenv.get(&self.tks[self.cpos - 1].get_text()));
-        }
-        if tty == TokenType::Ilit {
-            return FirstClassObj::Num(self.tks[self.cpos - 1].num);
-        }
-        panic!("getfirstclassobj_n error. {:?}", self.tks[self.cpos - 1]);
-    }
     pub fn gettype_n(&mut self) -> VarType {
-        let tokentext = self.tks[self.cpos].get_text();
+        let tktxt = self.tks[self.cpos].get_text();
         // There is change for room
         self.cpos += 1;
-        match tokentext {
+        match tktxt {
             "w" => VarType::Word,
             "l" => VarType::Long,
+            "b" => VarType::Byte,
             _ => {
-                panic!("TokenMass.gettype() error. {}", tokentext);
+                panic!("TokenMass.gettype() error. {}", tktxt);
+            }
+        }
+    }
+    pub fn getvaltype_n(&mut self) -> ValueType {
+        let tktxt = self.tks[self.cpos].get_text();
+        self.cpos += 1;
+        match tktxt {
+            "w" => ValueType::Word,
+            "l" => ValueType::Long,
+            "b" => ValueType::Byte,
+            _ => {
+                panic!("getvaltype_n() error. {}", tktxt);
             }
         }
     }
@@ -155,7 +163,7 @@ impl TokenMass {
         self.cpos += 1;
         tktext
     }
-    pub fn getfco_n(&mut self, varenv: &mut Environment<&'static str, Var>) -> FirstClassObj {
+    pub fn getfco_n(&mut self, valty: Option<ValueType>, varenv: &mut Environment<&'static str, Var>) -> FirstClassObj {
         let ctk = self.getcurrent_token();
         let lb = self.gettext_n();
         match ctk.tty {
@@ -163,7 +171,7 @@ impl TokenMass {
                 let var = varenv.get(&lb);
                 FirstClassObj::Variable(var)
             }
-            TokenType::Ilit => FirstClassObj::Num(ctk.num),
+            TokenType::Ilit => FirstClassObj::Num(valty.unwrap(), ctk.num),
             _ => {
                 panic!("getfco_n error. {:?}", self.getcurrent_token());
             }
@@ -204,7 +212,7 @@ impl TokenMass {
             retty = self.gettype_n();
             back = 4;
         }
-        self.assert_tkty(TokenType::Dollar);
+        self.as_tkty(TokenType::Dollar);
         let funlb = self.gettext_n();
         self.cpos -= back;
         (funlb, retty)
@@ -259,7 +267,7 @@ pub fn lex() -> TokenMass {
             let mut pose = pos;
             let mut tty = TokenType::Ident;
             pose += 1;
-            while pgchars[pose].is_ascii_alphanumeric() {
+            while pgchars[pose].is_ascii_alphanumeric() || pgchars[pose] == '.' {
                 pose += 1;
             }
             if pgchars[pos] == '@' {

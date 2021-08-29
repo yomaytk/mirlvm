@@ -12,8 +12,8 @@ pub static REGDEFASIZE: i32 = 4;
 pub struct Register {
     pub vr: i32,
     pub rr: i32,
-    pub birthday: i32,
-    pub deathday: i32,
+    pub btday: i32,
+    pub daday: i32,
     pub regsize: i32,
 }
 
@@ -22,17 +22,17 @@ impl Register {
         Self {
             vr,
             rr: NULLNUMBER,
-            birthday: NULLNUMBER,
-            deathday: NULLNUMBER,
+            btday: NULLNUMBER,
+            daday: NULLNUMBER,
             regsize: REGDEFASIZE,
         }
     }
-    pub fn newall(vr: i32, birthday: i32, deathday: i32, regsize: i32) -> Self {
+    pub fn newall(vr: i32, btday: i32, daday: i32, regsize: i32) -> Self {
         Self {
             vr,
             rr: NULLNUMBER,
-            birthday,
-            deathday,
+            btday,
+            daday,
             regsize,
         }
     }
@@ -251,8 +251,8 @@ impl LowIrProgram {
 
 fn evalparserinstr(
     pinstr: SsaInstr,
-    register_lifedata: &mut HashMap<i32, (i32, i32)>,
-    varstackdata: &mut HashMap<i32, i32>,
+    rglf: &mut HashMap<i32, (i32, i32)>,
+    vstkd: &mut HashMap<i32, i32>,
     rbb: &mut LowIrBlock,
     day: &mut i32,
     stackpointer: &mut i32,
@@ -261,22 +261,22 @@ fn evalparserinstr(
     match pinstr.op {
         Ret(fco) => match fco {
             FirstClassObj::Variable(var) => {
-                let mut src = Register::new(var.freshnum);
-                src.birthday = *day + 1;
-                src.deathday = *day + 1;
-                if let Some((birthday, _)) = register_lifedata.get(&var.freshnum) {
-                    src.birthday = *birthday;
+                let mut src = Register::new(var.frsn);
+                src.btday = *day + 1;
+                src.daday = *day + 1;
+                if let Some((btday, _)) = rglf.get(&var.frsn) {
+                    src.btday = *btday;
                 }
                 rbb.pushinstr(LowIrInstr::Ret(src), day);
-                register_lifedata.insert(src.vr, (src.birthday, src.deathday));
+                rglf.insert(src.vr, (src.btday, src.daday));
                 Some(src)
             }
-            FirstClassObj::Num(num) => {
+            FirstClassObj::Num(valty, num) => {
                 let mut src = Register::new(nextfreshregister());
-                src.birthday = *day + 1;
-                src.deathday = *day + 1;
+                src.btday = *day + 1;
+                src.daday = *day + 1;
                 rbb.pushinstr(LowIrInstr::Movenum(src, num), day);
-                register_lifedata.insert(src.vr, (src.birthday, src.deathday));
+                rglf.insert(src.vr, (src.btday, src.daday));
                 rbb.pushinstr(LowIrInstr::Ret(src), day);
                 Some(src)
             }
@@ -284,51 +284,51 @@ fn evalparserinstr(
         Assign(_valuety, var, pinstr) => {
             let mut src = evalparserinstr(
                 *pinstr,
-                register_lifedata,
-                varstackdata,
+                rglf,
+                vstkd,
                 rbb,
                 day,
                 stackpointer,
             )
             .unwrap_or_else(|| panic!("evalparserinstr error: Assign"));
-            let mut dst = Register::newall(var.freshnum, *day + 1, *day + 1, var.ty.toregrefsize());
-            if let Some((birthday, _)) = register_lifedata.get(&var.freshnum) {
-                dst.birthday = *birthday;
+            let mut dst = Register::newall(var.frsn, *day + 1, *day + 1, var.ty.toregrefsize());
+            if let Some((btday, _)) = rglf.get(&var.frsn) {
+                dst.btday = *btday;
             }
-            src.deathday = *day + 1;
+            src.daday = *day + 1;
             rbb.pushinstr(LowIrInstr::Movereg(dst, src), day);
-            register_lifedata.insert(src.vr, (src.birthday, src.deathday));
-            register_lifedata.insert(dst.vr, (dst.birthday, dst.deathday));
+            rglf.insert(src.vr, (src.btday, src.daday));
+            rglf.insert(dst.vr, (dst.btday, dst.daday));
             None
         }
         Alloc4(var, _align) => {
             *stackpointer += _align;
-            let dst = Register::newall(var.freshnum, *day, *day, var.ty.toregrefsize());
+            let dst = Register::newall(var.frsn, *day, *day, var.ty.toregrefsize());
             assert_eq!(dst.regsize, 8);
-            register_lifedata.insert(dst.vr, (*day, *day));
-            varstackdata.insert(var.freshnum, *stackpointer);
+            rglf.insert(dst.vr, (*day, *day));
+            vstkd.insert(var.frsn, *stackpointer);
             None
         }
         Storew(fco, dstvar) => {
             let _bytesize = dstvar.ty.stacksize();
             // variable stack pointer
-            let varsp = varstackdata
-                .get(&dstvar.freshnum)
+            let varsp = vstkd
+                .get(&dstvar.frsn)
                 .unwrap_or_else(|| panic!("var can't be found in Storew"));
             match fco {
-                FirstClassObj::Num(num) => {
+                FirstClassObj::Num(valty, num) => {
                     rbb.pushinstr(LowIrInstr::Storewnum(num, *varsp), day);
                 }
                 FirstClassObj::Variable(srcvar) => {
                     let src;
-                    if let Some((birthday, _)) = register_lifedata.get(&srcvar.freshnum) {
+                    if let Some((btday, _)) = rglf.get(&srcvar.frsn) {
                         src = Register::newall(
-                            srcvar.freshnum,
-                            *birthday,
+                            srcvar.frsn,
+                            *btday,
                             *day + 1,
                             srcvar.ty.toregrefsize(),
                         );
-                        register_lifedata.insert(srcvar.freshnum, (src.birthday, src.deathday));
+                        rglf.insert(srcvar.frsn, (src.btday, src.daday));
                     } else {
                         panic!("{:?} is not defined", srcvar);
                     }
@@ -338,78 +338,78 @@ fn evalparserinstr(
             None
         }
         Loadw(var) => {
-            let (srcbirth, _) = register_lifedata
-                .get(&var.freshnum)
+            let (scbt, _) = rglf
+                .get(&var.frsn)
                 .unwrap_or_else(|| panic!("{:?} is not defined.", var));
-            register_lifedata.insert(var.freshnum, (*srcbirth, *day + 1));
-            let varsp = varstackdata
-                .get(&var.freshnum)
+            rglf.insert(var.frsn, (*scbt, *day + 1));
+            let varsp = vstkd
+                .get(&var.frsn)
                 .unwrap_or_else(|| panic!("{:?} is not defined.", var));
             let src = Register::newall(nextfreshregister(), *day + 1, *day + 1, 4);
-            register_lifedata.insert(src.vr, (src.birthday, src.deathday));
+            rglf.insert(src.vr, (src.btday, src.daday));
             rbb.pushinstr(LowIrInstr::Loadw(src, *varsp), day);
             Some(src)
         }
         Bop(binop, lfco, rfco) => {
             let dst;
             if let FirstClassObj::Variable(v1) = lfco {
-                let (v1birth, _) = register_lifedata
-                    .get(&v1.freshnum)
+                let (v1birth, _) = rglf
+                    .get(&v1.frsn)
                     .unwrap_or_else(|| panic!("{:?} is not defined.", v1));
-                dst = Register::newall(v1.freshnum, *v1birth, *day + 1, v1.ty.toregrefsize());
-                register_lifedata.insert(v1.freshnum, (dst.birthday, dst.deathday));
+                dst = Register::newall(v1.frsn, *v1birth, *day + 1, v1.ty.toregrefsize());
+                rglf.insert(v1.frsn, (dst.btday, dst.daday));
             } else {
                 panic!("Bop lhs error in lowir.{:?}", lfco);
             }
             match rfco {
                 FirstClassObj::Variable(v2) => {
-                    let (v2birth, _) = register_lifedata
-                        .get(&v2.freshnum)
+                    let (v2birth, _) = rglf
+                        .get(&v2.frsn)
                         .unwrap_or_else(|| panic!("{:?} is not defined.", v2));
                     let src =
-                        Register::newall(v2.freshnum, *v2birth, *day + 1, v2.ty.toregrefsize());
-                    register_lifedata.insert(v2.freshnum, (src.birthday, src.deathday));
+                        Register::newall(v2.frsn, *v2birth, *day + 1, v2.ty.toregrefsize());
+                    rglf.insert(v2.frsn, (src.btday, src.daday));
                     rbb.pushinstr(LowIrInstr::Bop(binop, dst, RegorNum::Reg(src)), day);
                 }
-                FirstClassObj::Num(num) => {
+                FirstClassObj::Num(valty, num) => {
                     rbb.pushinstr(LowIrInstr::Bop(binop, dst, RegorNum::Num(num)), day);
                 }
             }
             Some(dst)
         }
-        Call(retty, funlb, args) => {
+        Call(retty, funlb, args, variadic) => {
             let dst = Register::newall(
                 nextfreshregister(),
                 *day + 1,
                 *day + 1,
                 retty.toregrefsize(),
             );
-            register_lifedata.insert(dst.vr, (dst.birthday, dst.deathday));
+            rglf.insert(dst.vr, (dst.btday, dst.daday));
             let mut newargs = vec![];
             for arg in args {
-                newargs.push(fco2reg(arg, register_lifedata, *day));
+                newargs.push(fco2reg(arg, rglf, *day));
             }
             rbb.pushinstr(LowIrInstr::Call(dst, funlb, newargs, vec![]), day);
             Some(dst)
         }
         Comp(cop, dstv, srcv, fco) => {
-            let dst = Register::newall(dstv.freshnum, *day + 1, *day + 1, dstv.ty.toregrefsize());
-            register_lifedata.insert(dst.vr, (dst.birthday, dst.deathday));
-            let (srcbirth, _) = register_lifedata
-                .get(&srcv.freshnum)
+            let dst = Register::newall(dstv.frsn, *day + 1, *day + 1, dstv.ty.toregrefsize());
+            rglf.insert(dst.vr, (dst.btday, dst.daday));
+            let (scbt, _) = rglf
+                .get(&srcv.frsn)
                 .unwrap_or_else(|| panic!("{:?} is not defined in Ceqw.", srcv));
-            let src = Register::newall(srcv.freshnum, *srcbirth, *day + 1, srcv.ty.toregrefsize());
-            register_lifedata.insert(srcv.freshnum, (src.birthday, src.deathday));
-            let rorn = fco2reg(fco, register_lifedata, *day);
+            let src = Register::newall(srcv.frsn, *scbt, *day + 1, srcv.ty.toregrefsize());
+            rglf.insert(srcv.frsn, (src.btday, src.daday));
+            let rorn = fco2reg(fco, rglf, *day);
             rbb.pushinstr(LowIrInstr::Comp(cop, dst, src, rorn), day);
             None
         }
         Jnz(srcv, lb1, lb2) => {
-            let (srcbirth, _) = register_lifedata
-                .get(&srcv.freshnum)
+            let (scbt, _) = rglf
+                .get(&srcv.frsn)
                 .unwrap_or_else(|| panic!("{:?} is not defined in Ceqw.", srcv));
-            let src = Register::newall(srcv.freshnum, *srcbirth, *day + 1, srcv.ty.toregrefsize());
-            register_lifedata.insert(srcv.freshnum, (src.birthday, src.deathday));
+            let src = Register::newall(srcv.frsn, *scbt, *day + 1, srcv.ty.toregrefsize());
+            rglf.insert(srcv.frsn, (src.btday, src.daday));
             rbb.pushinstr(LowIrInstr::Jnz(src, lb1, lb2), day);
             None
         }
@@ -423,35 +423,35 @@ fn evalparserinstr(
 
 fn fco2reg(
     fco: FirstClassObj,
-    register_lifedata: &mut HashMap<i32, (i32, i32)>,
+    rglf: &mut HashMap<i32, (i32, i32)>,
     day: i32,
 ) -> RegorNum {
     match fco {
         FirstClassObj::Variable(var) => {
-            if let Some((birthday, _)) = register_lifedata.get(&var.freshnum) {
-                let r = Register::newall(var.freshnum, *birthday, day + 1, var.ty.toregrefsize());
-                register_lifedata.insert(var.freshnum, (r.birthday, r.deathday));
+            if let Some((btday, _)) = rglf.get(&var.frsn) {
+                let r = Register::newall(var.frsn, *btday, day + 1, var.ty.toregrefsize());
+                rglf.insert(var.frsn, (r.btday, r.daday));
                 RegorNum::Reg(r)
             } else {
                 panic!("{:?} is not defined", var);
             }
         }
-        FirstClassObj::Num(num) => RegorNum::Num(num),
+        FirstClassObj::Num(valty, num) => RegorNum::Num(num),
     }
 }
 
-fn decidereglife(r: &mut Register, register_lifedata: &mut HashMap<i32, (i32, i32)>) {
+fn decidereglife(r: &mut Register, rglf: &mut HashMap<i32, (i32, i32)>) {
     if r.vr < 0 {
         return;
     }
-    let (birthday, deathday) = register_lifedata
+    let (btday, daday) = rglf
         .get(&r.vr)
-        .unwrap_or_else(|| panic!("Isn't it possible to come here? {:?}", register_lifedata));
-    (*r).birthday = *birthday;
-    (*r).deathday = *deathday;
+        .unwrap_or_else(|| panic!("Isn't it possible to come here? {:?}", rglf));
+    (*r).btday = *btday;
+    (*r).daday = *daday;
 }
 
-fn registerlifeupdate(lpg: &mut LowIrProgram, register_lifedata: &mut HashMap<i32, (i32, i32)>) {
+fn registerlifeupdate(lpg: &mut LowIrProgram, rglf: &mut HashMap<i32, (i32, i32)>) {
     for rfun in &mut lpg.funcs {
         for rbb in &mut rfun.rbbs {
             for rinstr in &mut rbb.instrs {
@@ -462,24 +462,24 @@ fn registerlifeupdate(lpg: &mut LowIrProgram, register_lifedata: &mut HashMap<i3
                     | Ret(ref mut r)
                     | Loadw(ref mut r, _)
                     | Jnz(ref mut r, ..) => {
-                        decidereglife(r, register_lifedata);
+                        decidereglife(r, rglf);
                     }
                     Movereg(.., ref mut r1, ref mut r2) | Comp(_, ref mut r1, ref mut r2, _) => {
-                        decidereglife(r1, register_lifedata);
-                        decidereglife(r2, register_lifedata);
+                        decidereglife(r1, rglf);
+                        decidereglife(r2, rglf);
                     }
                     Call(ref mut r, _, ref mut args, _) => {
-                        decidereglife(r, register_lifedata);
+                        decidereglife(r, rglf);
                         for arg in args {
                             if let RegorNum::Reg(r) = arg {
-                                decidereglife(r, register_lifedata);
+                                decidereglife(r, rglf);
                             }
                         }
                     }
                     Bop(_, ref mut r1, ref mut r2) => {
-                        decidereglife(r1, register_lifedata);
+                        decidereglife(r1, rglf);
                         if let RegorNum::Reg(ref mut r) = r2 {
-                            decidereglife(r, register_lifedata);
+                            decidereglife(r, rglf);
                         }
                     }
                     Storewnum(..) | Jmp(..) => {}
@@ -489,10 +489,10 @@ fn registerlifeupdate(lpg: &mut LowIrProgram, register_lifedata: &mut HashMap<i3
     }
 }
 
-fn processfunarguments(args: &Vec<Var>, register_lifedata: &mut HashMap<i32, (i32, i32)>) {
+fn processfunarguments(args: &Vec<Var>, rglf: &mut HashMap<i32, (i32, i32)>) {
     for i in 0..args.len() {
         let r = Register::newall(-(i as i32 + 1), 0, std::i32::MAX, args[i].ty.toregrefsize());
-        register_lifedata.insert(r.vr, (r.birthday, r.deathday));
+        rglf.insert(r.vr, (r.btday, r.daday));
     }
 }
 
@@ -500,15 +500,15 @@ pub fn genlowir(ppg: SsaProgram) -> LowIrProgram {
     let mut lpg = LowIrProgram::new();
     let mut day = 0;
     // manage register lifespan
-    let mut register_lifedata: HashMap<i32, (i32, i32)> = HashMap::new();
+    let mut rglf: HashMap<i32, (i32, i32)> = HashMap::new();
     // manage stackpointer of variables
-    let mut varstackdata = HashMap::new();
-    // manage variable freshnum and stackpointer
+    let mut vstkd = HashMap::new();
+    // manage variable frsn and stackpointer
     for pfun in ppg.funcs {
         let mut rfun = LowIrFunction::new(pfun.name);
         let mut stackpointer = 0;
         // function arguments
-        processfunarguments(&pfun.args, &mut register_lifedata);
+        processfunarguments(&pfun.args, &mut rglf);
         for pbb in pfun.bls {
             let mut rbb = LowIrBlock::new(pbb.lb);
             for instr in pbb.instrs {
@@ -517,8 +517,8 @@ pub fn genlowir(ppg: SsaProgram) -> LowIrProgram {
                 }
                 evalparserinstr(
                     instr,
-                    &mut register_lifedata,
-                    &mut varstackdata,
+                    &mut rglf,
+                    &mut vstkd,
                     &mut rbb,
                     &mut day,
                     &mut stackpointer,
@@ -529,6 +529,6 @@ pub fn genlowir(ppg: SsaProgram) -> LowIrProgram {
         rfun.framesize = stackpointer;
         lpg.pushfunc(rfun);
     }
-    registerlifeupdate(&mut lpg, &mut register_lifedata);
+    registerlifeupdate(&mut lpg, &mut rglf);
     lpg
 }

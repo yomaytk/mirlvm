@@ -3,3 +3,4 @@
 *.out
 src/gen_ir.rs
 out_debug.txt
+task.txt

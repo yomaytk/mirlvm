@@ -11,28 +11,28 @@ fn regaoflir(lir: &mut LowIrInstr, day: &mut i32, realregs: &mut [i32; GENEREGSI
         | Loadw(ref mut r, _)
         | Jnz(ref mut r, ..) => {
             r.regalloc(realregs);
-            if r.deathday == *day && r.vr >= 0 {
+            if r.daday == *day && r.vr >= 0 {
                 realregs[r.rr as usize] = -1;
             }
         }
         Movereg(ref mut r1, ref mut r2) => {
             r1.regalloc(realregs);
             r2.regalloc(realregs);
-            if r1.deathday == *day && r1.vr >= 0 {
+            if r1.daday == *day && r1.vr >= 0 {
                 realregs[r1.rr as usize] = -1;
             }
-            if r2.deathday == *day && r2.vr >= 0 {
+            if r2.daday == *day && r2.vr >= 0 {
                 realregs[r2.rr as usize] = -1;
             }
         }
         Bop(_, ref mut r1, ref mut r2) => {
             r1.regalloc(realregs);
-            if r1.deathday == *day && r1.vr >= 0 {
+            if r1.daday == *day && r1.vr >= 0 {
                 realregs[r1.rr as usize] = -1;
             }
             if let RegorNum::Reg(ref mut r) = r2 {
                 r.regalloc(realregs);
-                if r.deathday == *day && r.vr >= 0 {
+                if r.daday == *day && r.vr >= 0 {
                     realregs[r.rr as usize] = -1;
                 }
             }
@@ -51,11 +51,11 @@ fn regaoflir(lir: &mut LowIrInstr, day: &mut i32, realregs: &mut [i32; GENEREGSI
                     regargs.push(*r2);
                 }
             }
-            if r.deathday == *day && r.vr >= 0 {
+            if r.daday == *day && r.vr >= 0 {
                 realregs[r.rr as usize] = -1;
             }
             for r2 in regargs {
-                if r2.deathday == *day {
+                if r2.daday == *day {
                     realregs[r2.rr as usize] = -1;
                 }
             }
@@ -65,14 +65,14 @@ fn regaoflir(lir: &mut LowIrInstr, day: &mut i32, realregs: &mut [i32; GENEREGSI
             r2.regalloc(realregs);
             if let RegorNum::Reg(r3) = rorn {
                 r3.regalloc(realregs);
-                if r3.deathday == *day && r3.vr >= 0 {
+                if r3.daday == *day && r3.vr >= 0 {
                     realregs[r2.rr as usize] = -1;
                 }
             }
-            if r1.deathday == *day && r1.vr >= 0 {
+            if r1.daday == *day && r1.vr >= 0 {
                 realregs[r1.rr as usize] = -1;
             }
-            if r2.deathday == *day && r2.vr >= 0 {
+            if r2.daday == *day && r2.vr >= 0 {
                 realregs[r2.rr as usize] = -1;
             }
         }

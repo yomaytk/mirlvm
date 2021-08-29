@@ -18,10 +18,10 @@ function w $fib(w %t0) {
 @l5:
 	%t12 =w loadw %t
 	%t11 =w sub %t12, 1
-	%t10 =w call $fib(w %t11, ...)
+	%t10 =w call $fib(w %t11)
 	%t16 =w loadw %t
 	%t15 =w sub %t16, 2
-	%t14 =w call $fib(w %t15, ...)
+	%t14 =w call $fib(w %t15)
 	%t9 =w add %t10, %t14
 	ret %t9
 }
@@ -29,8 +29,8 @@ function w $fib(w %t0) {
 function w $main() {
 @l7:
 	%t =l alloc4 4
-	storew 10, %t
-	%t2 =w call $fib(w 10, ...)
+	storew 11, %t
+	%t2 =w call $fib(w 11, ...)
 	ret %t2
 }
 

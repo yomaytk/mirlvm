@@ -16,6 +16,7 @@ pub fn nextfreshregister() -> i32 {
 pub enum VarType {
     Word,
     Long,
+    Byte,
     Ptr2Word,
     Ptr2Long,
     TypeTuple(Vec<VarType>),
@@ -28,6 +29,7 @@ impl VarType {
         match self {
             Word | Ptr2Word => 4,
             Long | Ptr2Long => 8,
+            Byte => 1,
             TypeTuple(vvt) => {
                 let mut size = 0;
                 for v in vvt {
@@ -43,6 +45,7 @@ impl VarType {
         match self {
             Word => 4,
             Long | Ptr2Long | Ptr2Word => 8,
+            Byte => 1,
             Void => 0,
             TypeTuple(_) => {
                 panic!("toregregsize error in TypeTuple.")
@@ -65,6 +68,22 @@ pub struct SsaProgram {
 impl SsaProgram {
     pub fn new(funcs: Vec<SsaFunction>) -> Self {
         Self { funcs }
+    }
+}
+
+pub struct SsaData {
+    pub al: i32,
+    pub lb: &'static str,
+    pub dts: Vec<FirstClassObj>,
+}
+
+impl SsaData {
+    pub fn new(al: i32, lb: &'static str, dts: Vec<FirstClassObj>) -> Self {
+        Self {
+            al,
+            lb,
+            dts,
+        }
     }
 }
 
@@ -91,12 +110,12 @@ impl SsaFunction {
 pub struct Var {
     pub name: &'static str,
     pub ty: VarType,
-    pub freshnum: i32,
+    pub frsn: i32,
 }
 
 impl Var {
-    pub fn new(name: &'static str, ty: VarType, freshnum: i32) -> Self {
-        Self { name, ty, freshnum }
+    pub fn new(name: &'static str, ty: VarType, frsn: i32) -> Self {
+        Self { name, ty, frsn }
     }
 }
 
@@ -118,7 +137,7 @@ impl SsaBlock {
 #[derive(Clone, Debug, PartialEq)]
 pub enum FirstClassObj {
     Variable(Var),
-    Num(i32),
+    Num(ValueType, i32),
 }
 
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -135,7 +154,7 @@ pub enum SsaInstrOp {
     Storew(FirstClassObj, Var),
     Loadw(Var),
     Bop(Binop, FirstClassObj, FirstClassObj),
-    Call(VarType, Label, Vec<FirstClassObj>),
+    Call(VarType, Label, Vec<FirstClassObj>, bool),
     Comp(CompOp, Var, Var, FirstClassObj),
     Jnz(Var, Label, Label),
     Jmp(Label),
@@ -163,6 +182,7 @@ impl SsaInstr {
 pub enum ValueType {
     Word,
     Long,
+    Byte,
 }
 
 impl ValueType {
@@ -170,12 +190,14 @@ impl ValueType {
         match self {
             ValueType::Word => 4,
             ValueType::Long => 8,
+            ValueType::Byte => 1,
         }
     }
     pub fn bitsize(self) -> i32 {
         match self {
             ValueType::Word => 32,
             ValueType::Long => 64,
+            ValueType::Byte => 8,
         }
     }
 }
@@ -207,56 +229,60 @@ impl<T: Eq + std::hash::Hash + std::fmt::Debug, U: Clone + std::fmt::Debug> Envi
 
 // parser rhs of instr
 fn parseinstrrhs(
-    tmass: &mut TokenMass,
+    tms: &mut TokenMass,
     varenv: &mut Environment<&'static str, Var>,
     funenv: &mut Environment<&'static str, VarType>,
 ) -> SsaInstr {
     // loadw
-    if tmass.eq_tkty(TokenType::Loadw) {
-        let rhs = tmass.getvar_n(varenv);
+    if tms.eq_tkty(TokenType::Loadw) {
+        let rhs = tms.getvar_n(varenv);
         assert!(rhs.ty == VarType::Ptr2Word || rhs.ty == VarType::Ptr2Long);
         return SsaInstr::new(SsaInstrOp::Loadw(rhs));
     }
     // binop
-    if let Some(binop) = tmass.getbinop() {
-        let lhs = tmass.getfirstclassobj_n(varenv);
-        tmass.assert_tkty(TokenType::Comma);
-        let rhs = tmass.getfirstclassobj_n(varenv);
+    if let Some(binop) = tms.getbinop() {
+        let lhs = tms.getfco_n(Some(ValueType::Word), varenv);
+        tms.as_tkty(TokenType::Comma);
+        let rhs = tms.getfco_n(Some(ValueType::Word), varenv);
         return SsaInstr::new(SsaInstrOp::Bop(binop, lhs, rhs));
     }
     // call
-    if tmass.eq_tkty(TokenType::Call) {
-        tmass.assert_tkty(TokenType::Dollar);
-        let funlb = tmass.gettext_n();
+    if tms.eq_tkty(TokenType::Call) {
+        tms.as_tkty(TokenType::Dollar);
+        let funlb = tms.gettext_n();
         let retty = funenv.get(&funlb);
+        let mut variadic = false;
         // arguments
         let mut args = vec![];
-        tmass.assert_tkty(TokenType::Lbrace);
-        if tmass.eq_tkty(TokenType::Rbrace) {
-            return SsaInstr::new(SsaInstrOp::Call(retty, funlb, args));
+        tms.as_tkty(TokenType::Lbrace);
+        if tms.eq_tkty(TokenType::Rbrace) {
+            return SsaInstr::new(SsaInstrOp::Call(retty, funlb, args, variadic));    
         }
         loop {
-            if tmass.eq_tkty(TokenType::Threedot) {
+            if tms.eq_tkty(TokenType::Threedot) {
+                variadic = true;
+            } else {
+                let _ = tms.gettype_n();
+                let arg = tms.getfco_n(Some(ValueType::Word), varenv);
+                args.push(arg);
+            }
+            if tms.eq_tkty(TokenType::Rbrace) {
                 break;
             }
-            let _ = tmass.gettype_n();
-            let arg = tmass.getfco_n(varenv);
-            args.push(arg);
-            tmass.assert_tkty(TokenType::Comma);
+            tms.as_tkty(TokenType::Comma);
         }
-        tmass.eq_tkty(TokenType::Rbrace);
-        return SsaInstr::new(SsaInstrOp::Call(retty, funlb, args));
+        return SsaInstr::new(SsaInstrOp::Call(retty, funlb, args, variadic));
     }
-    if tmass.eq_tkty(TokenType::Phi) {
+    if tms.eq_tkty(TokenType::Phi) {
         let mut pv = vec![];
-        while tmass.cur_tkty() == TokenType::Blocklb {
-            let lb = tmass.gettext_n();
-            let fco = tmass.getfirstclassobj_n(varenv);
+        while tms.cur_tkty() == TokenType::Blocklb {
+            let lb = tms.gettext_n();
+            let fco = tms.getfco_n(Some(ValueType::Word), varenv);
             pv.push((lb, fco));
         }
         return SsaInstr::new(SsaInstrOp::Phi(pv));
     }
-    let curtk = tmass.getcurrent_token();
+    let curtk = tms.getcurrent_token();
     panic!(
         "parseinstr panic {:?}: {}",
         curtk,
@@ -265,44 +291,44 @@ fn parseinstrrhs(
 }
 
 fn parseinstroverall(
-    tmass: &mut TokenMass,
+    tms: &mut TokenMass,
     varenv: &mut Environment<&'static str, Var>,
     funenv: &mut Environment<&'static str, VarType>,
 ) -> SsaInstr {
     // ret
-    if tmass.eq_tkty(TokenType::Ret) {
-        let retnum = tmass.getfirstclassobj_n(varenv);
+    if tms.eq_tkty(TokenType::Ret) {
+        let retnum = tms.getfco_n(Some(ValueType::Word), varenv);
         return SsaInstr::new(SsaInstrOp::Ret(retnum));
     }
     // lhs =* rhs instruction
-    if tmass.cur_tkty() == TokenType::Ident {
-        let varname = tmass.gettext_n();
-        let cur_tkty = tmass.cur_tkty();
+    if tms.cur_tkty() == TokenType::Ident {
+        let varn = tms.gettext_n();
+        let cur_tkty = tms.cur_tkty();
         let assignty;
         let mut var;
         if cur_tkty == TokenType::Eql {
             assignty = ValueType::Long;
-            var = Var::new(varname, VarType::Long, nextfreshregister());
+            var = Var::new(varn, VarType::Long, nextfreshregister());
         } else {
             assert_eq!(cur_tkty, TokenType::Eqw);
             assignty = ValueType::Word;
-            var = Var::new(varname, VarType::Word, nextfreshregister());
+            var = Var::new(varn, VarType::Word, nextfreshregister());
         }
-        tmass.cpos += 1;
+        tms.cpos += 1;
         // alloc4
-        if tmass.eq_tkty(TokenType::Alloc4) {
-            let rhs = tmass.getnum_n();
+        if tms.eq_tkty(TokenType::Alloc4) {
+            let rhs = tms.getnum_n();
             var.ty = VarType::Ptr2Word;
             varenv.append(var.name, var.clone());
             return SsaInstr::new(SsaInstrOp::Alloc4(var, rhs));
         }
         // ceqw, csltw
-        let ctkty = tmass.cur_tkty();
+        let ctkty = tms.cur_tkty();
         if ctkty == TokenType::Ceqw || ctkty == TokenType::Csltw {
-            tmass.cpos += 1;
-            let lhs = tmass.getvar_n(varenv);
-            tmass.assert_tkty(TokenType::Comma);
-            let rhs = tmass.getfco_n(varenv);
+            tms.cpos += 1;
+            let lhs = tms.getvar_n(varenv);
+            tms.as_tkty(TokenType::Comma);
+            let rhs = tms.getfco_n(Some(ValueType::Word), varenv);
             var.ty = VarType::Word;
             varenv.append(var.name, var.clone());
             return if ctkty == TokenType::Ceqw {
@@ -311,116 +337,136 @@ fn parseinstroverall(
                 SsaInstr::new(SsaInstrOp::Comp(CompOp::Csltw, var, lhs, rhs))
             };
         }
-        let rhs = parseinstrrhs(tmass, varenv, funenv);
+        let rhs = parseinstrrhs(tms, varenv, funenv);
         varenv.append(var.name, var.clone());
         return SsaInstr::new(SsaInstrOp::Assign(assignty, var, Box::new(rhs)));
     }
     // storew
-    if tmass.eq_tkty(TokenType::Storew) {
-        let lhs = tmass.getfirstclassobj_n(varenv);
-        tmass.assert_tkty(TokenType::Comma);
-        let rhs = tmass.getvar_n(varenv);
+    if tms.eq_tkty(TokenType::Storew) {
+        let lhs = tms.getfco_n(Some(ValueType::Word), varenv);
+        tms.as_tkty(TokenType::Comma);
+        let rhs = tms.getvar_n(varenv);
         return SsaInstr::new(SsaInstrOp::Storew(lhs, rhs));
     }
     // jnz
-    if tmass.eq_tkty(TokenType::Jnz) {
-        let condvar = tmass.getvar_n(varenv);
-        tmass.assert_tkty(TokenType::Comma);
-        let blb1 = tmass.getblocklb_n();
-        tmass.assert_tkty(TokenType::Comma);
-        let blb2 = tmass.getblocklb_n();
+    if tms.eq_tkty(TokenType::Jnz) {
+        let condvar = tms.getvar_n(varenv);
+        tms.as_tkty(TokenType::Comma);
+        let blb1 = tms.getblocklb_n();
+        tms.as_tkty(TokenType::Comma);
+        let blb2 = tms.getblocklb_n();
         return SsaInstr::new(SsaInstrOp::Jnz(condvar, blb1, blb2));
     }
     // jmp
-    if tmass.eq_tkty(TokenType::Jmp) {
-        let blb = tmass.getblocklb_n();
+    if tms.eq_tkty(TokenType::Jmp) {
+        let blb = tms.getblocklb_n();
         return SsaInstr::new(SsaInstrOp::Jmp(blb));
     }
-    panic!("parseinstroverall error. {:?}", tmass.getcurrent_token());
+    panic!("parseinstroverall error. {:?}", tms.getcurrent_token());
 }
 
 // parse basic block
 fn parsebb(
-    tmass: &mut TokenMass,
+    tms: &mut TokenMass,
     varenv: &mut Environment<&'static str, Var>,
     funenv: &mut Environment<&'static str, VarType>,
 ) -> SsaBlock {
-    let blocklb = tmass.gettext_n();
-    tmass.assert_tkty(TokenType::Colon);
+    let blocklb = tms.gettext_n();
+    tms.as_tkty(TokenType::Colon);
     let mut instrs = vec![];
     loop {
-        let tkty = tmass.cur_tkty();
+        let tkty = tms.cur_tkty();
         if tkty == TokenType::Blocklb || tkty == TokenType::Crbrace {
             break;
         }
-        instrs.push(parseinstroverall(tmass, varenv, funenv));
+        instrs.push(parseinstroverall(tms, varenv, funenv));
     }
     SsaBlock::new(blocklb, instrs)
 }
 
-fn parseargs(tmass: &mut TokenMass, varenv: &mut Environment<&'static str, Var>) -> Vec<Var> {
+fn parseargs(tms: &mut TokenMass, varenv: &mut Environment<&'static str, Var>) -> Vec<Var> {
     let mut argvars = vec![];
-    tmass.assert_tkty(TokenType::Lbrace);
-    if tmass.eq_tkty(TokenType::Rbrace) {
+    tms.as_tkty(TokenType::Lbrace);
+    if tms.eq_tkty(TokenType::Rbrace) {
         return vec![];
     }
     // parse each arguments
-    let mut freshnum = -1;
+    let mut frsn = -1;
     loop {
-        let vty = tmass.gettype_n();
-        let lb = tmass.gettext_n();
-        let var = Var::new(lb, vty, freshnum);
+        let vty = tms.gettype_n();
+        let lb = tms.gettext_n();
+        let var = Var::new(lb, vty, frsn);
         varenv.append(lb, var.clone());
         argvars.push(var);
-        if tmass.eq_tkty(TokenType::Rbrace) {
+        if tms.eq_tkty(TokenType::Rbrace) {
             break;
         }
-        tmass.assert_tkty(TokenType::Comma);
-        freshnum -= 1;
+        tms.as_tkty(TokenType::Comma);
+        frsn -= 1;
     }
     argvars
 }
 
 // parse function ...
-fn parsefun(tmass: &mut TokenMass, funenv: &mut Environment<&'static str, VarType>) -> SsaFunction {
-    tmass.assert_tkty(TokenType::Function);
+fn parsefun(tms: &mut TokenMass, funenv: &mut Environment<&'static str, VarType>) -> SsaFunction {
+    tms.as_tkty(TokenType::Function);
     let mut functy = VarType::Void;
-    if tmass.cur_tkty() != TokenType::Dollar {
-        functy = tmass.gettype_n();
+    if tms.cur_tkty() != TokenType::Dollar {
+        functy = tms.gettype_n();
     }
-    tmass.assert_tkty(TokenType::Dollar);
-    let funclb = tmass.gettext_n();
+    tms.as_tkty(TokenType::Dollar);
+    let funclb = tms.gettext_n();
     let mut varenv = Environment::new();
     // parse arguments
-    let argvars = parseargs(tmass, &mut varenv);
+    let argvars = parseargs(tms, &mut varenv);
     // function body
-    tmass.assert_tkty(TokenType::Clbrace);
+    tms.as_tkty(TokenType::Clbrace);
     let mut blocks = vec![];
     loop {
-        let ctkty = tmass.cur_tkty();
+        let ctkty = tms.cur_tkty();
         if ctkty == TokenType::Blocklb {
-            let bblock = parsebb(tmass, &mut varenv, funenv);
+            let bblock = parsebb(tms, &mut varenv, funenv);
             blocks.push(bblock);
         } else {
-            tmass.assert_tkty(TokenType::Crbrace);
+            tms.as_tkty(TokenType::Crbrace);
             break;
         }
     }
     SsaFunction::new(funclb, functy, argvars, blocks)
 }
 
-pub fn parse(tmass: &mut TokenMass) -> SsaProgram {
+fn parsedata(tms: &mut TokenMass, varenv: &mut Environment<&'static str, Var>) -> SsaData {
+    let mut gd = SsaData::new(0, "", vec![]);
+    tms.as_tkty(TokenType::Dollar);
+    gd.lb = tms.gettext_n();
+    tms.as_tkty(TokenType::Eq);
+    if tms.eq_tkty(TokenType::Align) {
+        gd.al = tms.getnum_n();
+    }
+    tms.as_tkty(TokenType::Clbrace);
+    loop {
+        let dty = tms.getvaltype_n();
+        while !tms.eq_tkty(TokenType::Comma) {
+            gd.dts.push(tms.getfco_n(Some(dty), varenv));
+            if tms.eq_tkty(TokenType::Crbrace) {
+                return gd;
+            }
+        }
+    }
+}
+
+pub fn parse(tms: &mut TokenMass) -> SsaProgram {
     let mut funcs = vec![];
     let mut funenv = Environment::new();
     loop {
-        if tmass.cur_tkty() == TokenType::Function {
-            let (funlb, retty) = tmass.getfuncdata();
+        if tms.cur_tkty() == TokenType::Function {
+            let (funlb, retty) = tms.getfuncdata();
             funenv.append(funlb, retty);
-            let func = parsefun(tmass, &mut funenv);
+            let func = parsefun(tms, &mut funenv);
             funcs.push(func);
             continue;
         }
-        tmass.assert_tkty(TokenType::Eof);
+        tms.as_tkty(TokenType::Eof);
         break;
     }
     SsaProgram::new(funcs)

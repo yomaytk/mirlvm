@@ -282,15 +282,8 @@ fn evalparserinstr(
             }
         },
         Assign(_valuety, var, pinstr) => {
-            let mut src = evalparserinstr(
-                *pinstr,
-                rglf,
-                vstkd,
-                rbb,
-                day,
-                stackpointer,
-            )
-            .unwrap_or_else(|| panic!("evalparserinstr error: Assign"));
+            let mut src = evalparserinstr(*pinstr, rglf, vstkd, rbb, day, stackpointer)
+                .unwrap_or_else(|| panic!("evalparserinstr error: Assign"));
             let mut dst = Register::newall(var.frsn, *day + 1, *day + 1, var.ty.toregrefsize());
             if let Some((btday, _)) = rglf.get(&var.frsn) {
                 dst.btday = *btday;
@@ -366,8 +359,7 @@ fn evalparserinstr(
                     let (v2birth, _) = rglf
                         .get(&v2.frsn)
                         .unwrap_or_else(|| panic!("{:?} is not defined.", v2));
-                    let src =
-                        Register::newall(v2.frsn, *v2birth, *day + 1, v2.ty.toregrefsize());
+                    let src = Register::newall(v2.frsn, *v2birth, *day + 1, v2.ty.toregrefsize());
                     rglf.insert(v2.frsn, (src.btday, src.daday));
                     rbb.pushinstr(LowIrInstr::Bop(binop, dst, RegorNum::Reg(src)), day);
                 }
@@ -421,11 +413,7 @@ fn evalparserinstr(
     }
 }
 
-fn fco2reg(
-    fco: FirstClassObj,
-    rglf: &mut HashMap<i32, (i32, i32)>,
-    day: i32,
-) -> RegorNum {
+fn fco2reg(fco: FirstClassObj, rglf: &mut HashMap<i32, (i32, i32)>, day: i32) -> RegorNum {
     match fco {
         FirstClassObj::Variable(var) => {
             if let Some((btday, _)) = rglf.get(&var.frsn) {

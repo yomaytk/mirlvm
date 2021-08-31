@@ -1,4 +1,4 @@
-use super::parser::{Environment, FirstClassObj, Var, VarType, ValueType};
+use super::parser::{Env, FirstClassObj, ValueType, Var, VarType};
 use super::*;
 
 pub static RESERVEDWORDS: &[(&str, TokenType)] = &[
@@ -127,9 +127,9 @@ impl TokenMass {
         self.cpos += 1;
         res
     }
-    pub fn getvar_n(&mut self, varenv: &Environment<&'static str, Var>) -> Var {
+    pub fn getvar_n(&mut self, env: &Env) -> Var {
         let key = self.tks[self.cpos].get_text();
-        let res = varenv.get(&key);
+        let res = env.g_lvs(&key);
         self.cpos += 1;
         res
     }
@@ -163,12 +163,12 @@ impl TokenMass {
         self.cpos += 1;
         tktext
     }
-    pub fn getfco_n(&mut self, valty: Option<ValueType>, varenv: &mut Environment<&'static str, Var>) -> FirstClassObj {
+    pub fn getfco_n(&mut self, valty: Option<ValueType>, env: &mut Env) -> FirstClassObj {
         let ctk = self.getcurrent_token();
         let lb = self.gettext_n();
         match ctk.tty {
             TokenType::Ident => {
-                let var = varenv.get(&lb);
+                let var = env.g_lvs(&lb);
                 FirstClassObj::Variable(var)
             }
             TokenType::Ilit => FirstClassObj::Num(valty.unwrap(), ctk.num),

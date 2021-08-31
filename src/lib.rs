@@ -3,11 +3,11 @@ use std::env;
 use std::fs;
 
 pub mod codegen;
+pub mod deadcode;
 pub mod lexer;
 pub mod lowir;
 pub mod parser;
 pub mod rega;
-pub mod ssaopt;
 
 type Label = &'static str;
 type VarName = &'static str;

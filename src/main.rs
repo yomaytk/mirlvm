@@ -2,11 +2,11 @@ extern crate mirlvm;
 use std::env;
 
 use mirlvm::codegen::*;
+use mirlvm::deadcode::*;
 use mirlvm::lexer::*;
 use mirlvm::lowir::*;
 use mirlvm::parser::*;
 use mirlvm::rega::*;
-use mirlvm::ssaopt::*;
 
 fn main() {
     let args = env::args().collect::<Vec<String>>();

@@ -1,3 +1,5 @@
+data $fmt = { b "One and one make %d!\n", b 0 }
+
 function w $add(w %a, w %b) {              # Define a function add
 @start:
 	%c =w add %a, %b                   # Adds the 2 arguments
@@ -9,4 +11,3 @@ function w $main() {                # Main function
 	call $printf(l $fmt, w %r, ...)    # Show the result
 	ret 0
 }
-data $fmt = { b "One and one make %d!\n", b 0 }

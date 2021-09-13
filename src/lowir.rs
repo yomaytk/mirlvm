@@ -7,6 +7,19 @@ use std::fmt;
 
 pub static NULLNUMBER: i32 = -100;
 pub static REGDEFASIZE: i32 = 4;
+static MAXLIFE: i32 = std::i32::MAX;
+
+trait AppHash {
+    fn rgup(&mut self, frsn: i32, bd: i32, dd: i32, cdd: i32);
+}
+
+impl AppHash for HashMap<i32, (i32, i32)> {
+    fn rgup(&mut self, frsn: i32, bd: i32, dd: i32, cdd: i32) {
+        if dd > cdd {
+            self.insert(frsn, (bd, dd));
+        }
+    }
+}
 
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct Register {
@@ -238,11 +251,12 @@ impl LowIrFunction {
 #[derive(Debug)]
 pub struct LowIrProgram {
     pub funcs: Vec<LowIrFunction>,
+    pub gvs: Vec<Gdata>,
 }
 
 impl LowIrProgram {
-    pub fn new() -> Self {
-        Self { funcs: vec![] }
+    pub fn new(gvs: Vec<Gdata>) -> Self {
+        Self { funcs: vec![], gvs }
     }
     pub fn pushfunc(&mut self, rgfun: LowIrFunction) {
         self.funcs.push(rgfun);
@@ -279,6 +293,10 @@ fn evalparserinstr(
                 rglf.insert(src.vr, (src.btday, src.daday));
                 rbb.pushinstr(LowIrInstr::Ret(src), day);
                 Some(src)
+            }
+            FirstClassObj::String(..) => {
+                // TODO
+                panic!("evalparserinstr error in Ret: {:?}", fco);
             }
         },
         Assign(_valuety, var, pinstr) => {
@@ -327,6 +345,10 @@ fn evalparserinstr(
                     }
                     rbb.pushinstr(LowIrInstr::Storewreg(src, *varsp), day);
                 }
+                FirstClassObj::String(..) => {
+                    // TODO
+                    panic!("evalparserinstr error in Storew: {:?}", fco);
+                }
             }
             None
         }
@@ -365,6 +387,10 @@ fn evalparserinstr(
                 }
                 FirstClassObj::Num(valty, num) => {
                     rbb.pushinstr(LowIrInstr::Bop(binop, dst, RegorNum::Num(num)), day);
+                }
+                FirstClassObj::String(..) => {
+                    // TODO
+                    panic!("evalparserinstr error in Bop: {:?}", rfco);
                 }
             }
             Some(dst)
@@ -416,15 +442,19 @@ fn evalparserinstr(
 fn fco2reg(fco: FirstClassObj, rglf: &mut HashMap<i32, (i32, i32)>, day: i32) -> RegorNum {
     match fco {
         FirstClassObj::Variable(var) => {
-            if let Some((btday, _)) = rglf.get(&var.frsn) {
+            if let Some((btday, dday)) = rglf.get(&var.frsn) {
                 let r = Register::newall(var.frsn, *btday, day + 1, var.ty.toregrefsize());
-                rglf.insert(var.frsn, (r.btday, r.daday));
+                rglf.rgup(var.frsn, r.btday, r.daday, *dday);
                 RegorNum::Reg(r)
             } else {
                 panic!("{:?} is not defined", var);
             }
         }
         FirstClassObj::Num(valty, num) => RegorNum::Num(num),
+        FirstClassObj::String(..) => {
+            // TODO
+            panic!("fco2reg error: {:?}", fco);
+        }
     }
 }
 
@@ -484,15 +514,18 @@ fn processfunarguments(args: &Vec<Var>, rglf: &mut HashMap<i32, (i32, i32)>) {
     }
 }
 
-pub fn genlowir(ppg: SsaProgram) -> LowIrProgram {
-    let mut lpg = LowIrProgram::new();
+pub fn genlowir(spg: SsaProgram) -> LowIrProgram {
     let mut day = 0;
     // manage register lifespan
     let mut rglf: HashMap<i32, (i32, i32)> = HashMap::new();
     // manage stackpointer of variables
     let mut vstkd = HashMap::new();
     // manage variable frsn and stackpointer
-    for pfun in ppg.funcs {
+    for gd in &spg.gvs {
+        rglf.insert(gd.frsn, (0, MAXLIFE));
+    }
+    let mut lpg = LowIrProgram::new(spg.gvs);
+    for pfun in spg.funcs {
         let mut rfun = LowIrFunction::new(pfun.name);
         let mut stackpointer = 0;
         // function arguments

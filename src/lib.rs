@@ -4,6 +4,7 @@ use std::fs;
 
 pub mod codegen;
 pub mod deadcode;
+pub mod dominators;
 pub mod lexer;
 pub mod lowir;
 pub mod parser;

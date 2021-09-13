@@ -14,6 +14,7 @@ fn main() {
 
     // lexical analysis
     let mut tmass = lex();
+
     if option == "--out-lex" {
         println!("{:#?}", tmass);
         return;
@@ -21,6 +22,7 @@ fn main() {
 
     // parsing
     let mut ssaprogram = parse(&mut tmass);
+
     if option == "--out-parse" {
         println!("{:#?}", ssaprogram);
         return;
@@ -34,6 +36,12 @@ fn main() {
                     println!("{:?}", instr.op);
                 }
             }
+        }
+        return;
+    }
+    if option == "--out-gdata" {
+        for gv in &ssaprogram.gvs {
+            println!("{:?}", gv);
         }
         return;
     }

@@ -1,5 +1,6 @@
 use super::lexer::Binop;
 use super::lowir::{LowIrInstr, LowIrProgram, RegorNum};
+use super::parser::FirstClassObj;
 use super::*;
 use parser::CompOp;
 
@@ -52,6 +53,22 @@ fn selrax(size: usize) -> &'static str {
 
 pub fn gen_x64code(lirpg: LowIrProgram) {
     print!(".intel_syntax noprefix\n");
+
+    // data section
+    print!(".data\n");
+    for gd in lirpg.gvs {
+        print!("{}:\n", gd.lb);
+        for eled in gd.dts {
+            if let FirstClassObj::String(lb) = eled {
+                print!(".LC{}\n", -gd.frsn);
+                print!("\t.string \"{}\"\n", lb);
+            }
+        }
+    }
+
+    print!("\n");
+
+    // execution program section
     print!(".text\n");
     print!(".globl main\n");
 

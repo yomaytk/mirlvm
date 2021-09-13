@@ -5,22 +5,58 @@ use std::collections::HashMap;
 use std::sync::Mutex;
 
 pub static FRESHREGNUM: Lazy<Mutex<i32>> = Lazy::new(|| Mutex::new(0));
+static GFRSN: Lazy<Mutex<i32>> = Lazy::new(|| Mutex::new(-1));
 
-macro_rules! genv {
-    ($tf: ident, $key: ident) => {{
-        let r = $tf.get($key);
-        if let Some(v) = r {
-            return v.clone();
-        } else {
-            panic!("cannot find the key: {} in environement", $key);
-        }
-    }};
+fn ggfrsn() -> i32 {
+    let cgf = *GFRSN.lock().unwrap();
+    *GFRSN.lock().unwrap() = cgf - 1;
+    cgf
 }
 
 pub fn nextfreshregister() -> i32 {
     let res = *FRESHREGNUM.lock().unwrap();
     *FRESHREGNUM.lock().unwrap() += 1;
     res
+}
+
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub enum ValueType {
+    Word,
+    Long,
+    Byte,
+    Z,
+}
+
+impl ValueType {
+    pub fn bytesize(self) -> i32 {
+        use ValueType::*;
+        match self {
+            Word => 4,
+            Long => 8,
+            Byte => 1,
+            Z => -1,
+        }
+    }
+    pub fn bitsize(self) -> i32 {
+        use ValueType::*;
+        match self {
+            Word => 32,
+            Long => 64,
+            Byte => 8,
+            Z => -1,
+        }
+    }
+    pub fn tovarty(&self) -> VarType {
+        use ValueType::*;
+        match self {
+            Word => VarType::Word,
+            Long => VarType::Long,
+            Byte => VarType::Byte,
+            Z => {
+                panic!("tovarty error: {:?}", self);
+            }
+        }
+    }
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -32,6 +68,7 @@ pub enum VarType {
     Ptr2Long,
     TypeTuple(Vec<VarType>),
     Void,
+    ConT(Vec<(VarType, u32)>),
 }
 
 impl VarType {
@@ -49,6 +86,13 @@ impl VarType {
                 size
             }
             Void => 1,
+            ConT(cont) => {
+                let mut size = 0;
+                for t in cont {
+                    size += t.0.stacksize() * t.1 as i32;
+                }
+                size
+            }
         }
     }
     pub fn toregrefsize(&self) -> i32 {
@@ -60,6 +104,13 @@ impl VarType {
             Void => 0,
             TypeTuple(_) => {
                 panic!("toregregsize error in TypeTuple.")
+            }
+            ConT(cont) => {
+                let mut size = 0;
+                for t in cont {
+                    size += t.0.stacksize() * t.1 as i32;
+                }
+                size
             }
         }
     }
@@ -74,23 +125,39 @@ struct Arg {
 #[derive(Debug)]
 pub struct SsaProgram {
     pub funcs: Vec<SsaFunction>,
+    pub gvs: Vec<Gdata>,
 }
 
 impl SsaProgram {
-    pub fn new(funcs: Vec<SsaFunction>) -> Self {
-        Self { funcs }
+    pub fn new(funcs: Vec<SsaFunction>, gvs: Vec<Gdata>) -> Self {
+        Self { funcs, gvs }
     }
 }
 
-pub struct SsaData {
+#[derive(Debug, Clone)]
+pub struct Gdata {
+    pub frsn: i32,
     pub al: i32,
     pub lb: &'static str,
     pub dts: Vec<FirstClassObj>,
+    pub types: VarType,
 }
 
-impl SsaData {
-    pub fn new(al: i32, lb: &'static str, dts: Vec<FirstClassObj>) -> Self {
-        Self { al, lb, dts }
+impl Gdata {
+    pub fn new(
+        frsn: i32,
+        al: i32,
+        lb: &'static str,
+        dts: Vec<FirstClassObj>,
+        types: VarType,
+    ) -> Self {
+        Self {
+            frsn,
+            al,
+            lb,
+            dts,
+            types,
+        }
     }
 }
 
@@ -144,7 +211,8 @@ impl SsaBlock {
 #[derive(Clone, Debug, PartialEq)]
 pub enum FirstClassObj {
     Variable(Var),
-    Num(ValueType, i32),
+    Num(VarType, i32),
+    String(&'static str),
 }
 
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -185,35 +253,11 @@ impl SsaInstr {
     }
 }
 
-#[derive(Clone, Copy, Debug, PartialEq)]
-pub enum ValueType {
-    Word,
-    Long,
-    Byte,
-}
-
-impl ValueType {
-    pub fn bytesize(self) -> i32 {
-        match self {
-            ValueType::Word => 4,
-            ValueType::Long => 8,
-            ValueType::Byte => 1,
-        }
-    }
-    pub fn bitsize(self) -> i32 {
-        match self {
-            ValueType::Word => 32,
-            ValueType::Long => 64,
-            ValueType::Byte => 8,
-        }
-    }
-}
-
 #[derive(Debug, Clone)]
 pub struct Env {
     fns: HashMap<&'static str, VarType>,
     lvs: HashMap<&'static str, Var>,
-    gvs: HashMap<&'static str, VarType>,
+    gvs: HashMap<&'static str, Gdata>,
 }
 
 impl Env {
@@ -225,16 +269,25 @@ impl Env {
         }
     }
     pub fn g_fns(&self, key: &'static str) -> VarType {
-        let fns = &self.fns;
-        genv!(fns, key)
+        if let Some(v) = self.fns.get(key) {
+            return v.clone();
+        } else {
+            return VarType::Void;
+        }
     }
     pub fn g_lvs(&self, key: &'static str) -> Var {
-        let lvs = &self.lvs;
-        genv!(lvs, key)
+        if let Some(v) = self.lvs.get(key) {
+            return v.clone();
+        } else {
+            self.g_gvs(key)
+        }
     }
     pub fn g_gvs(&self, key: &'static str) -> Var {
-        let lvs = &self.lvs;
-        genv!(lvs, key)
+        if let Some(v) = self.gvs.get(key) {
+            return Var::new(v.lb, v.types.clone(), -10);
+        } else {
+            panic!("{} is not in Env.\nEnv: {:?}", key, self);
+        }
     }
     fn i_fns(&mut self, key: &'static str, vty: VarType) {
         self.fns.insert(key, vty);
@@ -242,8 +295,8 @@ impl Env {
     fn i_lvs(&mut self, key: &'static str, var: Var) {
         self.lvs.insert(key, var);
     }
-    fn i_gvs(&mut self, key: &'static str, vty: VarType) {
-        self.gvs.insert(key, vty);
+    fn i_gvs(&mut self, key: &'static str, ssd: Gdata) {
+        self.gvs.insert(key, ssd);
     }
 }
 
@@ -257,9 +310,9 @@ fn parseinstrrhs(tms: &mut TokenMass, env: &mut Env) -> SsaInstr {
     }
     // binop
     if let Some(binop) = tms.getbinop() {
-        let lhs = tms.getfco_n(Some(ValueType::Word), env);
+        let lhs = tms.getfco_n(VarType::Word, env);
         tms.as_tkty(TokenType::Comma);
-        let rhs = tms.getfco_n(Some(ValueType::Word), env);
+        let rhs = tms.getfco_n(VarType::Word, env);
         return SsaInstr::new(SsaInstrOp::Bop(binop, lhs, rhs));
     }
     // call
@@ -278,8 +331,10 @@ fn parseinstrrhs(tms: &mut TokenMass, env: &mut Env) -> SsaInstr {
             if tms.eq_tkty(TokenType::Threedot) {
                 variadic = true;
             } else {
-                let _ = tms.gettype_n();
-                let arg = tms.getfco_n(Some(ValueType::Word), env);
+                let ty = tms.gettype_n();
+                tms.eq_tkty(TokenType::Dollar);
+                let mut arg = tms.getfco_n(ty, env);
+
                 args.push(arg);
             }
             if tms.eq_tkty(TokenType::Rbrace) {
@@ -293,7 +348,7 @@ fn parseinstrrhs(tms: &mut TokenMass, env: &mut Env) -> SsaInstr {
         let mut pv = vec![];
         while tms.cur_tkty() == TokenType::Blocklb {
             let lb = tms.gettext_n();
-            let fco = tms.getfco_n(Some(ValueType::Word), env);
+            let fco = tms.getfco_n(VarType::Word, env);
             pv.push((lb, fco));
         }
         return SsaInstr::new(SsaInstrOp::Phi(pv));
@@ -309,7 +364,7 @@ fn parseinstrrhs(tms: &mut TokenMass, env: &mut Env) -> SsaInstr {
 fn parseinstroverall(tms: &mut TokenMass, env: &mut Env) -> SsaInstr {
     // ret
     if tms.eq_tkty(TokenType::Ret) {
-        let retnum = tms.getfco_n(Some(ValueType::Word), env);
+        let retnum = tms.getfco_n(VarType::Word, env);
         return SsaInstr::new(SsaInstrOp::Ret(retnum));
     }
     // lhs =* rhs instruction
@@ -340,7 +395,7 @@ fn parseinstroverall(tms: &mut TokenMass, env: &mut Env) -> SsaInstr {
             tms.cpos += 1;
             let lhs = tms.getvar_n(env);
             tms.as_tkty(TokenType::Comma);
-            let rhs = tms.getfco_n(Some(ValueType::Word), env);
+            let rhs = tms.getfco_n(VarType::Word, env);
             var.ty = VarType::Word;
             env.i_lvs(var.name, var.clone());
             return if ctkty == TokenType::Ceqw {
@@ -355,7 +410,7 @@ fn parseinstroverall(tms: &mut TokenMass, env: &mut Env) -> SsaInstr {
     }
     // storew
     if tms.eq_tkty(TokenType::Storew) {
-        let lhs = tms.getfco_n(Some(ValueType::Word), env);
+        let lhs = tms.getfco_n(VarType::Word, env);
         tms.as_tkty(TokenType::Comma);
         let rhs = tms.getvar_n(env);
         return SsaInstr::new(SsaInstrOp::Storew(lhs, rhs));
@@ -373,6 +428,10 @@ fn parseinstroverall(tms: &mut TokenMass, env: &mut Env) -> SsaInstr {
     if tms.eq_tkty(TokenType::Jmp) {
         let blb = tms.getblocklb_n();
         return SsaInstr::new(SsaInstrOp::Jmp(blb));
+    }
+    // call
+    if tms.cur_tkty() == TokenType::Call {
+        return parseinstrrhs(tms, env);
     }
     panic!("parseinstroverall error. {:?}", tms.getcurrent_token());
 }
@@ -417,7 +476,6 @@ fn parseargs(tms: &mut TokenMass, env: &mut Env) -> Vec<Var> {
 // parse function ...
 fn parsefun(tms: &mut TokenMass, env: &mut Env) -> SsaFunction {
     let mut sfn = SsaFunction::new("", VarType::Void, vec![], vec![]);
-    tms.as_tkty(TokenType::Function);
     if tms.cur_tkty() != TokenType::Dollar {
         sfn.retty = tms.gettype_n();
     }
@@ -439,8 +497,8 @@ fn parsefun(tms: &mut TokenMass, env: &mut Env) -> SsaFunction {
     sfn
 }
 
-fn parsedata(tms: &mut TokenMass, env: &mut Env) -> SsaData {
-    let mut gd = SsaData::new(0, "", vec![]);
+fn parsedata(tms: &mut TokenMass, env: &mut Env) -> Gdata {
+    let mut gd = Gdata::new(ggfrsn(), 0, "", vec![], VarType::Void);
     tms.as_tkty(TokenType::Dollar);
     gd.lb = tms.gettext_n();
     tms.as_tkty(TokenType::Eq);
@@ -448,28 +506,43 @@ fn parsedata(tms: &mut TokenMass, env: &mut Env) -> SsaData {
         gd.al = tms.getnum_n();
     }
     tms.as_tkty(TokenType::Clbrace);
+    let mut typesv = vec![];
+
+    // get each element from global data
     loop {
-        let dty = tms.getvaltype_n();
+        let dty = tms.gettype_n();
+        let mut cnt = 0;
         while !tms.eq_tkty(TokenType::Comma) {
-            gd.dts.push(tms.getfco_n(Some(dty), env));
+            gd.dts.push(tms.getfco_n(dty.clone(), env));
+            cnt += 1;
             if tms.eq_tkty(TokenType::Crbrace) {
+                gd.types = VarType::ConT(typesv);
+                env.i_gvs(gd.lb, gd.clone());
                 return gd;
             }
         }
+        typesv.push((dty, cnt));
     }
 }
 
 pub fn parse(tms: &mut TokenMass) -> SsaProgram {
-    let mut spg = SsaProgram::new(vec![]);
+    let mut spg = SsaProgram::new(vec![], vec![]);
     let mut env = Env::new();
     loop {
-        if tms.cur_tkty() == TokenType::Function {
+        // function
+        if tms.eq_tkty(TokenType::Function) {
             let (funlb, retty) = tms.getfuncdata();
             env.i_fns(funlb, retty);
             spg.funcs.push(parsefun(tms, &mut env));
             continue;
         }
-        if tms.cur_tkty() == TokenType::Data {}
+        // global data
+        if tms.eq_tkty(TokenType::Data) {
+            let ssd = parsedata(tms, &mut env);
+            env.i_gvs(ssd.lb, ssd.clone());
+            spg.gvs.push(ssd);
+            continue;
+        }
         tms.as_tkty(TokenType::Eof);
         break;
     }

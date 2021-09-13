@@ -83,6 +83,7 @@ pub enum TokenType {
     Data,
     Excla,
     Align,
+    String,
     Eof,
 }
 
@@ -163,7 +164,7 @@ impl TokenMass {
         self.cpos += 1;
         tktext
     }
-    pub fn getfco_n(&mut self, valty: Option<ValueType>, env: &mut Env) -> FirstClassObj {
+    pub fn getfco_n(&mut self, vty: VarType, env: &mut Env) -> FirstClassObj {
         let ctk = self.getcurrent_token();
         let lb = self.gettext_n();
         match ctk.tty {
@@ -171,7 +172,8 @@ impl TokenMass {
                 let var = env.g_lvs(&lb);
                 FirstClassObj::Variable(var)
             }
-            TokenType::Ilit => FirstClassObj::Num(valty.unwrap(), ctk.num),
+            TokenType::Ilit => FirstClassObj::Num(vty, ctk.num),
+            TokenType::String => FirstClassObj::String(lb),
             _ => {
                 panic!("getfco_n error. {:?}", self.getcurrent_token());
             }
@@ -201,7 +203,6 @@ impl TokenMass {
         }
     }
     pub fn getfuncdata(&mut self) -> (&'static str, VarType) {
-        assert_eq!(self.cur_tkty(), TokenType::Function);
         self.cpos += 1;
         let retty;
         let back;
@@ -246,7 +247,7 @@ pub fn lex() -> TokenMass {
     let pgchars: Vec<char> = (&program[..]).chars().collect();
     let pglen = program.len();
     let mut pos = 0;
-    let mut tmass = TokenMass::new();
+    let mut tms = TokenMass::new();
 
     loop {
         if pos == pglen {
@@ -262,6 +263,7 @@ pub fn lex() -> TokenMass {
             }
             continue;
         }
+
         // identification or reserved words
         if pgchars[pos] == '@' || pgchars[pos] == '%' || pgchars[pos].is_ascii_alphabetic() {
             let mut pose = pos;
@@ -272,7 +274,7 @@ pub fn lex() -> TokenMass {
             }
             if pgchars[pos] == '@' {
                 tty = TokenType::Blocklb;
-                tmass.push(Token::new(tty, pos + 1, pose, -1));
+                tms.push(Token::new(tty, pos + 1, pose, -1));
                 pos = pose;
                 continue;
             }
@@ -282,10 +284,11 @@ pub fn lex() -> TokenMass {
                     break;
                 }
             }
-            tmass.push(Token::new(tty, pos, pose, -1));
+            tms.push(Token::new(tty, pos, pose, -1));
             pos = pose;
             continue;
         }
+
         // integer
         if pgchars[pos].is_ascii_digit() {
             let mut num = 0;
@@ -294,9 +297,21 @@ pub fn lex() -> TokenMass {
                 num = num * 10 + (pgchars[pos] as i32 - 48);
                 pos += 1;
             }
-            tmass.push(Token::new(TokenType::Ilit, poss, pos, num));
+            tms.push(Token::new(TokenType::Ilit, poss, pos, num));
             continue;
         }
+
+        // string
+        if pgchars[pos] == '\"' {
+            let mut pose = pos + 1;
+            while pgchars[pose] != '\"' {
+                pose += 1;
+            }
+            tms.push(Token::new(TokenType::String, pos + 1, pose, -1));
+            pos = pose + 1;
+            continue;
+        }
+
         // signals
         let mut nextloop = false;
         for sig in SIGNALS {
@@ -305,7 +320,7 @@ pub fn lex() -> TokenMass {
             if signal == &program[pos..pose] {
                 let tty = sig.1;
                 nextloop = true;
-                tmass.push(Token::new(tty, pos, pose, -1));
+                tms.push(Token::new(tty, pos, pose, -1));
                 pos = pose;
                 break;
             }
@@ -316,6 +331,6 @@ pub fn lex() -> TokenMass {
 
         panic!("failed lex program. next letter = {}", pgchars[pos]);
     }
-    tmass.push(Token::new(TokenType::Eof, 0, 0, -1));
-    tmass
+    tms.push(Token::new(TokenType::Eof, 0, 0, -1));
+    tms
 }

@@ -139,10 +139,9 @@ impl DominatorsTree {
         let mut rgraph = vec![vec![]; n];
         for i in 0..n {
             for translb in &bbs[i].transbbs {
-                let transid = bbids.get(translb).unwrap_or_else(|| panic!(
-                    "cannot find {} in bbids in make_bb_domtree",
-                    translb
-                ));
+                let transid = bbids.get(translb).unwrap_or_else(|| {
+                    panic!("cannot find {} in bbids in make_bb_domtree", translb)
+                });
                 graph[bbs[i].id].push(*transid);
                 rgraph[*transid].push(bbs[i].id);
             }
@@ -150,7 +149,7 @@ impl DominatorsTree {
 
         // control flow graph
         let mut cfg = ControlFlowGraph::new(graph, rgraph);
-        
+
         // generate dominators tree for basic block graph
         self.generate_tree(&mut cfg);
 

@@ -3,11 +3,11 @@ use std::env;
 
 use mirlvm::codegen::*;
 use mirlvm::deadcode::*;
+use mirlvm::dominators::*;
 use mirlvm::lexer::*;
 use mirlvm::lowir::*;
 use mirlvm::parser::*;
 use mirlvm::rega::*;
-use mirlvm::dominators::*;
 
 fn main() {
     let args = env::args().collect::<Vec<String>>();
@@ -29,7 +29,6 @@ fn main() {
         return;
     }
 
-    
     if option == "--out-ssair" {
         for func in &ssaprogram.funcs {
             println!("function {}", func.name);
@@ -42,17 +41,17 @@ fn main() {
         }
         return;
     }
-    
+
     if option == "--out-gdata" {
         for gv in &ssaprogram.gvs {
             println!("{:?}", gv);
         }
         return;
     }
-    
+
     // compute dominators tree
     makedomt(&mut ssaprogram);
-    
+
     // information for each basic block
     if option == "--out-parsebb" {
         for func in &ssaprogram.funcs {
@@ -74,7 +73,7 @@ fn main() {
     // SSA optical phase
     // remove useless instr
     removeuselessinstr(&mut ssaprogram);
-    
+
     if option == "--out-ssair_1" {
         for func in &ssaprogram.funcs {
             println!("function {}", func.name);

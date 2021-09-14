@@ -1,4 +1,6 @@
-use super::*;
+use super::parser::*;
+
+use std::collections::HashMap;
 
 // dominance computation
 // Lengauer-Tarjan algorithm
@@ -90,7 +92,7 @@ impl DominatorsTree {
             bucket: vec![vec![]; n],
         }
     }
-    pub fn generate_tree(&mut self, cfg: &mut ControlFlowGraph) {
+    fn generate_tree(&mut self, cfg: &mut ControlFlowGraph) {
         let n = cfg.graph.len();
         let mut uf = DomUnionFind::new();
         uf.init(n);
@@ -124,5 +126,44 @@ impl DominatorsTree {
         for i in 1..n {
             self.idom[i] = cfg.vertex[self.idom[i]];
         }
+    }
+    fn make_bb_domtree(&mut self, bbs: &mut Vec<SsaBlock>, n: usize) {
+        let mut bbids = HashMap::new();
+
+        for i in 0..n {
+            bbids.insert(bbs[i].lb, bbs[i].id);
+        }
+
+        // make graph and rgraph
+        let mut graph = vec![vec![]; n];
+        let mut rgraph = vec![vec![]; n];
+        for i in 0..n {
+            for translb in &bbs[i].transbbs {
+                let transid = bbids.get(translb).unwrap_or_else(|| panic!(
+                    "cannot find {} in bbids in make_bb_domtree",
+                    translb
+                ));
+                graph[bbs[i].id].push(*transid);
+                rgraph[*transid].push(bbs[i].id);
+            }
+        }
+
+        // control flow graph
+        let mut cfg = ControlFlowGraph::new(graph, rgraph);
+        
+        // generate dominators tree for basic block graph
+        self.generate_tree(&mut cfg);
+
+        for bb in bbs {
+            bb.idom = self.idom[bb.id];
+        }
+    }
+}
+
+pub fn makedomt(spg: &mut SsaProgram) {
+    for func in &mut spg.funcs {
+        let bbslen = func.bls.len();
+        let mut domt = DominatorsTree::new(bbslen);
+        domt.make_bb_domtree(&mut func.bls, bbslen);
     }
 }

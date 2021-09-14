@@ -164,6 +164,10 @@ impl TokenMass {
         self.cpos += 1;
         tktext
     }
+    pub fn gettext(&mut self) -> &'static str {
+        let tktext = self.tks[self.cpos].get_text();
+        tktext
+    }
     pub fn getfco_n(&mut self, vty: VarType, env: &mut Env) -> FirstClassObj {
         let ctk = self.getcurrent_token();
         let lb = self.gettext_n();

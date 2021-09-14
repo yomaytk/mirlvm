@@ -4,13 +4,24 @@ use once_cell::sync::Lazy;
 use std::collections::HashMap;
 use std::sync::Mutex;
 
-pub static FRESHREGNUM: Lazy<Mutex<i32>> = Lazy::new(|| Mutex::new(0));
+static FRESHREGNUM: Lazy<Mutex<i32>> = Lazy::new(|| Mutex::new(0));
 static GFRSN: Lazy<Mutex<i32>> = Lazy::new(|| Mutex::new(-1));
+static BBNUM: Lazy<Mutex<usize>> = Lazy::new(|| Mutex::new(0));
 
-fn ggfrsn() -> i32 {
+fn get_gfrsn() -> i32 {
     let cgf = *GFRSN.lock().unwrap();
     *GFRSN.lock().unwrap() = cgf - 1;
     cgf
+}
+
+fn get_bbnum() -> usize {
+    let bbn = *BBNUM.lock().unwrap();
+    *BBNUM.lock().unwrap() = bbn + 1;
+    bbn
+}
+
+fn reset_bbnum() {
+    *BBNUM.lock().unwrap() = 0;
 }
 
 pub fn nextfreshregister() -> i32 {
@@ -196,14 +207,20 @@ impl Var {
 #[derive(Clone, Debug, PartialEq)]
 pub struct SsaBlock {
     pub lb: Label,
+    pub id: usize,
     pub instrs: Vec<SsaInstr>,
+    pub transbbs: Vec<&'static str>,
+    pub idom: usize,
 }
 
 impl SsaBlock {
-    pub fn new(lb: Label, instrs: Vec<SsaInstr>) -> Self {
+    pub fn new(lb: Label, id: usize, instrs: Vec<SsaInstr>) -> Self {
         Self {
-            lb: lb,
-            instrs: instrs,
+            lb,
+            id,
+            instrs,
+            transbbs: vec![],
+            idom: std::usize::MAX,
         }
     }
 }
@@ -361,7 +378,11 @@ fn parseinstrrhs(tms: &mut TokenMass, env: &mut Env) -> SsaInstr {
     );
 }
 
-fn parseinstroverall(tms: &mut TokenMass, env: &mut Env) -> SsaInstr {
+fn parseinstroverall(
+    tms: &mut TokenMass,
+    env: &mut Env,
+    transbbs: &mut Vec<&'static str>,
+) -> SsaInstr {
     // ret
     if tms.eq_tkty(TokenType::Ret) {
         let retnum = tms.getfco_n(VarType::Word, env);
@@ -422,11 +443,14 @@ fn parseinstroverall(tms: &mut TokenMass, env: &mut Env) -> SsaInstr {
         let blb1 = tms.getblocklb_n();
         tms.as_tkty(TokenType::Comma);
         let blb2 = tms.getblocklb_n();
+        transbbs.push(blb1);
+        transbbs.push(blb2);
         return SsaInstr::new(SsaInstrOp::Jnz(condvar, blb1, blb2));
     }
     // jmp
     if tms.eq_tkty(TokenType::Jmp) {
         let blb = tms.getblocklb_n();
+        transbbs.push(blb);
         return SsaInstr::new(SsaInstrOp::Jmp(blb));
     }
     // call
@@ -438,15 +462,26 @@ fn parseinstroverall(tms: &mut TokenMass, env: &mut Env) -> SsaInstr {
 
 // parse basic block
 fn parsebb(tms: &mut TokenMass, env: &mut Env) -> SsaBlock {
-    let mut ssb = SsaBlock::new(tms.gettext_n(), vec![]);
+    let mut ssb = SsaBlock::new(tms.gettext_n(), get_bbnum(), vec![]);
+    let mut transbbs = vec![];
     tms.as_tkty(TokenType::Colon);
     loop {
         let tkty = tms.cur_tkty();
-        if tkty == TokenType::Blocklb || tkty == TokenType::Crbrace {
+        if tkty == TokenType::Blocklb {
+            match ssb.instrs[ssb.instrs.len() - 1].op {
+                SsaInstrOp::Jnz(..) | SsaInstrOp::Jmp(..) => {}
+                _ => {
+                    transbbs.push(tms.gettext());
+                }
+            }
             break;
         }
-        ssb.instrs.push(parseinstroverall(tms, env));
+        if tkty == TokenType::Crbrace {
+            break;
+        }
+        ssb.instrs.push(parseinstroverall(tms, env, &mut transbbs));
     }
+    ssb.transbbs = transbbs;
     ssb
 }
 
@@ -485,6 +520,7 @@ fn parsefun(tms: &mut TokenMass, env: &mut Env) -> SsaFunction {
     sfn.args = parseargs(tms, env);
     // function body
     tms.as_tkty(TokenType::Clbrace);
+    reset_bbnum();
     loop {
         let ctkty = tms.cur_tkty();
         if ctkty == TokenType::Blocklb {
@@ -498,7 +534,7 @@ fn parsefun(tms: &mut TokenMass, env: &mut Env) -> SsaFunction {
 }
 
 fn parsedata(tms: &mut TokenMass, env: &mut Env) -> Gdata {
-    let mut gd = Gdata::new(ggfrsn(), 0, "", vec![], VarType::Void);
+    let mut gd = Gdata::new(get_gfrsn(), 0, "", vec![], VarType::Void);
     tms.as_tkty(TokenType::Dollar);
     gd.lb = tms.gettext_n();
     tms.as_tkty(TokenType::Eq);

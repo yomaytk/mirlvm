@@ -50,7 +50,7 @@ fn main() {
     }
 
     // compute dominators tree
-    makedomt(&mut ssaprogram);
+    dominators(&mut ssaprogram);
 
     // information for each basic block
     if option == "--out-parsebb" {
@@ -58,12 +58,13 @@ fn main() {
             println!("function: {}", func.name);
             for bb in &func.bls {
                 println!(
-                    "\tlabel: {}, id: {}, instrscount: {}, transition blocks: {:?}. idom: {}",
+                    "\tlabel: {}, id: {}, instrscount: {}, transition blocks: {:?}. idom: {}, df: {:?}",
                     bb.lb,
                     bb.id,
                     bb.instrs.len(),
                     bb.transbbs,
                     bb.idom,
+                    bb.df,
                 );
             }
         }

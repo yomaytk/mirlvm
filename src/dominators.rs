@@ -17,8 +17,8 @@ impl DomUnionFind {
             mn: vec![],
         }
     }
-    fn init(&mut self, N: usize) {
-        for i in 0..N {
+    fn init(&mut self, n: usize) {
+        for i in 0..n {
             self.pars.push(i);
             self.mn.push(i);
         }
@@ -43,7 +43,8 @@ impl DomUnionFind {
     }
 }
 
-struct ControlFlowGraph {
+#[derive(Clone, Debug, PartialEq)]
+pub struct ControlFlowGraph {
     pub graph: Vec<Vec<usize>>,
     pub rgraph: Vec<Vec<usize>>,
     pub vertex: Vec<usize>,
@@ -76,11 +77,13 @@ impl ControlFlowGraph {
     }
 }
 
+#[derive(Clone, Debug, PartialEq)]
 struct DominatorsTree {
     pub sdom: Vec<usize>,
     pub idom: Vec<usize>,
     pub colu: Vec<usize>,
     pub bucket: Vec<Vec<usize>>,
+    pub tree: Vec<Vec<usize>>,
 }
 
 impl DominatorsTree {
@@ -90,6 +93,7 @@ impl DominatorsTree {
             idom: vec![std::usize::MAX; n],
             colu: vec![0; n],
             bucket: vec![vec![]; n],
+            tree: vec![vec![]; n],
         }
     }
     fn generate_tree(&mut self, cfg: &mut ControlFlowGraph) {
@@ -127,7 +131,7 @@ impl DominatorsTree {
             self.idom[i] = cfg.vertex[self.idom[i]];
         }
     }
-    fn make_bb_domtree(&mut self, bbs: &mut Vec<SsaBlock>, n: usize) {
+    fn make_bb_domtree(&mut self, bbs: &mut Vec<SsaBlock>, n: usize) -> ControlFlowGraph {
         let mut bbids = HashMap::new();
 
         for i in 0..n {
@@ -153,16 +157,70 @@ impl DominatorsTree {
         // generate dominators tree for basic block graph
         self.generate_tree(&mut cfg);
 
+        // save idom and tree structure
         for bb in bbs {
             bb.idom = self.idom[bb.id];
+            if bb.idom != std::usize::MAX {
+                self.tree[bb.idom].push(bb.id);
+            }
         }
+
+        cfg
     }
 }
 
-pub fn makedomt(spg: &mut SsaProgram) {
+#[derive(Clone, Debug, PartialEq)]
+struct DominatorFrontier {
+    pub domf: Vec<Vec<usize>>,
+}
+
+impl DominatorFrontier {
+    fn new(n: usize) -> Self {
+        Self {
+            domf: vec![vec![std::usize::MAX; 1]; n],
+        }
+    }
+    fn compute(
+        &mut self,
+        cfg: &ControlFlowGraph,
+        domt: &DominatorsTree,
+        bbi: usize,
+        bbs: &mut Vec<SsaBlock>,
+    ) {
+        let mut df = vec![];
+
+        // Y for { Y in succ(X) and IDOM(Y) != X }
+        for succ_y in &cfg.graph[bbi] {
+            if domt.idom[*succ_y] != bbi {
+                df.push(*succ_y);
+            }
+        }
+
+        // Y for (for all Z in child(X), { Y in DF(Z) and IDOM(Y) != X })
+        for child_x in &domt.tree[bbi] {
+            if let Some(&std::usize::MAX) = self.domf[*child_x].first() {
+                self.compute(cfg, domt, *child_x, bbs);
+            }
+            for y in &self.domf[*child_x] {
+                if domt.idom[*y] != bbi {
+                    df.push(*y);
+                }
+            }
+        }
+
+        bbs[bbi].df = df.clone();
+        self.domf[bbi] = df;
+    }
+}
+
+pub fn dominators(spg: &mut SsaProgram) {
+    // compute dominators structure
     for func in &mut spg.funcs {
-        let bbslen = func.bls.len();
-        let mut domt = DominatorsTree::new(bbslen);
-        domt.make_bb_domtree(&mut func.bls, bbslen);
+        let n = func.bls.len();
+        let mut domt = DominatorsTree::new(n);
+        let cfg = domt.make_bb_domtree(&mut func.bls, n);
+        let mut domf = DominatorFrontier::new(n);
+        domf.compute(&cfg, &domt, 0, &mut func.bls);
+        func.cfg = Some(Box::new(cfg));
     }
 }

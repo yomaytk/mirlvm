@@ -1,3 +1,4 @@
+use super::dominators::ControlFlowGraph;
 use super::lexer::*;
 use super::*;
 use once_cell::sync::Lazy;
@@ -178,6 +179,7 @@ pub struct SsaFunction {
     pub retty: VarType,
     pub args: Vec<Var>,
     pub bls: Vec<SsaBlock>,
+    pub cfg: Option<Box<ControlFlowGraph>>,
 }
 
 impl SsaFunction {
@@ -187,6 +189,7 @@ impl SsaFunction {
             retty,
             args,
             bls,
+            cfg: None,
         }
     }
 }
@@ -211,6 +214,7 @@ pub struct SsaBlock {
     pub instrs: Vec<SsaInstr>,
     pub transbbs: Vec<&'static str>,
     pub idom: usize,
+    pub df: Vec<usize>,
 }
 
 impl SsaBlock {
@@ -221,6 +225,7 @@ impl SsaBlock {
             instrs,
             transbbs: vec![],
             idom: std::usize::MAX,
+            df: vec![],
         }
     }
 }

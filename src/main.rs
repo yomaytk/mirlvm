@@ -6,6 +6,7 @@ use mirlvm::deadcode::*;
 use mirlvm::dominators::*;
 use mirlvm::lexer::*;
 use mirlvm::lowir::*;
+use mirlvm::mem2reg::*;
 use mirlvm::parser::*;
 use mirlvm::rega::*;
 
@@ -23,6 +24,16 @@ fn main() {
 
     // parsing
     let mut ssaprogram = parse(&mut tmass);
+
+    if option == "--out-m2rinfo" {
+        for func in ssaprogram.funcs {
+            println!("{}:", func.name);
+            for m2ralloc in func.m2rinfo.iter() {
+                println!("\t{:?}", m2ralloc);
+            }
+        }
+        return;
+    }
 
     if option == "--out-parse" {
         println!("{:#?}", ssaprogram);
@@ -73,7 +84,9 @@ fn main() {
 
     // SSA optical phase
     // remove useless instr
-    removeuselessinstr(&mut ssaprogram);
+    if option == "-O1" {
+        removeuselessinstr(&mut ssaprogram);
+    }
 
     if option == "--out-ssair_1" {
         for func in &ssaprogram.funcs {

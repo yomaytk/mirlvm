@@ -7,6 +7,7 @@ pub mod deadcode;
 pub mod dominators;
 pub mod lexer;
 pub mod lowir;
+pub mod mem2reg;
 pub mod parser;
 pub mod rega;
 

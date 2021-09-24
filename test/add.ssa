@@ -11,5 +11,6 @@ function w $main() {
     %t7 =w add %t8, %t9
     %t10 =w loadw %c
     %t6 =w add %t7, %t10
+    storew 43, %a
     ret %t6
 }

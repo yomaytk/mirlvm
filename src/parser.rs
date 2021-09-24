@@ -1,5 +1,6 @@
 use super::dominators::ControlFlowGraph;
 use super::lexer::*;
+use super::mem2reg::*;
 use super::*;
 use once_cell::sync::Lazy;
 use std::collections::HashMap;
@@ -15,10 +16,18 @@ fn get_gfrsn() -> i32 {
     cgf
 }
 
-fn get_bbnum() -> usize {
+fn get_bbnum_n() -> usize {
     let bbn = *BBNUM.lock().unwrap();
     *BBNUM.lock().unwrap() = bbn + 1;
     bbn
+}
+
+fn cur_bbnum() -> usize {
+    let bbn = *BBNUM.lock().unwrap();
+    if bbn < 1 {
+        panic!("BBNUM should be more than 0");
+    }
+    bbn-1
 }
 
 fn reset_bbnum() {
@@ -180,16 +189,18 @@ pub struct SsaFunction {
     pub args: Vec<Var>,
     pub bls: Vec<SsaBlock>,
     pub cfg: Option<Box<ControlFlowGraph>>,
+    pub m2rinfo: HashMap<&'static str, MemToregAlloca>,
 }
 
 impl SsaFunction {
-    pub fn new(name: &'static str, retty: VarType, args: Vec<Var>, bls: Vec<SsaBlock>) -> Self {
+    pub fn new(name: &'static str, retty: VarType) -> Self {
         Self {
             name,
             retty,
-            args,
-            bls,
+            args: vec![],
+            bls: vec![],
             cfg: None,
+            m2rinfo: HashMap::new(),
         }
     }
 }
@@ -323,11 +334,20 @@ impl Env {
 }
 
 // parser rhs of instr
-fn parseinstrrhs(tms: &mut TokenMass, env: &mut Env) -> SsaInstr {
+fn parseinstrrhs(
+    tms: &mut TokenMass,
+    env: &mut Env,
+    m2rinfo: &mut HashMap<&'static str, MemToregAlloca>,
+) -> SsaInstr {
     // loadw
     if tms.eq_tkty(TokenType::Loadw) {
         let rhs = tms.getvar_n(env);
         assert!(rhs.ty == VarType::Ptr2Word || rhs.ty == VarType::Ptr2Long);
+        m2rinfo
+            .get_mut(rhs.name)
+            .unwrap_or_else(|| panic!("cannot find \"{}\" variable.", rhs.name))
+            .usgbbs
+            .insert(cur_bbnum());
         return SsaInstr::new(SsaInstrOp::Loadw(rhs));
     }
     // binop
@@ -387,6 +407,7 @@ fn parseinstroverall(
     tms: &mut TokenMass,
     env: &mut Env,
     transbbs: &mut Vec<&'static str>,
+    m2rinfo: &mut HashMap<&'static str, MemToregAlloca>,
 ) -> SsaInstr {
     // ret
     if tms.eq_tkty(TokenType::Ret) {
@@ -413,6 +434,7 @@ fn parseinstroverall(
             let rhs = tms.getnum_n();
             var.ty = VarType::Ptr2Word;
             env.i_lvs(var.name, var.clone());
+            m2rinfo.insert(var.name, MemToregAlloca::new(var.name));
             return SsaInstr::new(SsaInstrOp::Alloc4(var, rhs));
         }
         // ceqw, csltw
@@ -430,7 +452,7 @@ fn parseinstroverall(
                 SsaInstr::new(SsaInstrOp::Comp(CompOp::Csltw, var, lhs, rhs))
             };
         }
-        let rhs = parseinstrrhs(tms, env);
+        let rhs = parseinstrrhs(tms, env, m2rinfo);
         env.i_lvs(var.name, var.clone());
         return SsaInstr::new(SsaInstrOp::Assign(assignty, var, Box::new(rhs)));
     }
@@ -439,6 +461,10 @@ fn parseinstroverall(
         let lhs = tms.getfco_n(VarType::Word, env);
         tms.as_tkty(TokenType::Comma);
         let rhs = tms.getvar_n(env);
+        m2rinfo
+            .get_mut(rhs.name)
+            .unwrap_or_else(|| panic!("cannot find \"{}\" variable.", rhs.name))
+            .strpush(cur_bbnum());
         return SsaInstr::new(SsaInstrOp::Storew(lhs, rhs));
     }
     // jnz
@@ -460,14 +486,18 @@ fn parseinstroverall(
     }
     // call
     if tms.cur_tkty() == TokenType::Call {
-        return parseinstrrhs(tms, env);
+        return parseinstrrhs(tms, env, m2rinfo);
     }
     panic!("parseinstroverall error. {:?}", tms.getcurrent_token());
 }
 
 // parse basic block
-fn parsebb(tms: &mut TokenMass, env: &mut Env) -> SsaBlock {
-    let mut ssb = SsaBlock::new(tms.gettext_n(), get_bbnum(), vec![]);
+fn parsebb(
+    tms: &mut TokenMass,
+    env: &mut Env,
+    m2rinfo: &mut HashMap<&'static str, MemToregAlloca>,
+) -> SsaBlock {
+    let mut ssb = SsaBlock::new(tms.gettext_n(), get_bbnum_n(), vec![]);
     let mut transbbs = vec![];
     tms.as_tkty(TokenType::Colon);
     loop {
@@ -484,7 +514,8 @@ fn parsebb(tms: &mut TokenMass, env: &mut Env) -> SsaBlock {
         if tkty == TokenType::Crbrace {
             break;
         }
-        ssb.instrs.push(parseinstroverall(tms, env, &mut transbbs));
+        ssb.instrs
+            .push(parseinstroverall(tms, env, &mut transbbs, m2rinfo));
     }
     ssb.transbbs = transbbs;
     ssb
@@ -515,7 +546,7 @@ fn parseargs(tms: &mut TokenMass, env: &mut Env) -> Vec<Var> {
 
 // parse function ...
 fn parsefun(tms: &mut TokenMass, env: &mut Env) -> SsaFunction {
-    let mut sfn = SsaFunction::new("", VarType::Void, vec![], vec![]);
+    let mut sfn = SsaFunction::new("", VarType::Void);
     if tms.cur_tkty() != TokenType::Dollar {
         sfn.retty = tms.gettype_n();
     }
@@ -526,15 +557,19 @@ fn parsefun(tms: &mut TokenMass, env: &mut Env) -> SsaFunction {
     // function body
     tms.as_tkty(TokenType::Clbrace);
     reset_bbnum();
+    // information for mem2reg
+    let mut m2rinfo = HashMap::new();
     loop {
         let ctkty = tms.cur_tkty();
         if ctkty == TokenType::Blocklb {
-            sfn.bls.push(parsebb(tms, env));
+            sfn.bls.push(parsebb(tms, env, &mut m2rinfo));
         } else {
             tms.as_tkty(TokenType::Crbrace);
             break;
         }
     }
+    MemToregAlloca::decision_type(&mut m2rinfo);
+    sfn.m2rinfo = m2rinfo;
     sfn
 }
 

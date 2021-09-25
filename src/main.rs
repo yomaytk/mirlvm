@@ -11,8 +11,14 @@ use mirlvm::parser::*;
 use mirlvm::rega::*;
 
 fn main() {
+    
     let args = env::args().collect::<Vec<String>>();
     let option = &args[1];
+    let mut option2 = "";
+    
+    if args.len() > 3 {
+        option2 = &args[2];
+    }
 
     // lexical analysis
     let mut tmass = lex();
@@ -82,13 +88,15 @@ fn main() {
         return;
     }
 
+    removeuselessinstr(&mut ssaprogram);
+
     // SSA optical phase
     // remove useless instr
     if option == "-O1" {
-        removeuselessinstr(&mut ssaprogram);
+        ezmem2reg(&mut ssaprogram);
     }
 
-    if option == "--out-ssair_1" {
+    if option2 == "--out-ssair_1" {
         for func in &ssaprogram.funcs {
             println!("function {}", func.name);
             for b in &func.bls {

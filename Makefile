@@ -2,6 +2,7 @@ BIN = ./target/debug/mirlvm
 TEST = ./test
 BUILD = build
 OPTION = null
+OPTION2 = null
 SSAFILE = null
 
 $(BUILD): 
@@ -12,11 +13,11 @@ alltests: $(BUILD)
 	gcc a.s
 
 debug: $(BUILD)
-	@if [ $(OPTION) = "null" ]; then \
+	@if [ $(OPTION) = "null" -o $(OPTION) = "-O1" ]; then \
 		$(BIN) $(TEST)/$(SSAFILE) > debug.s; \
 		gcc debug.s; \
 	else \
-		$(BIN) $(OPTION) $(TEST)/$(SSAFILE) > out_debug.txt; \
+		$(BIN) $(OPTION) $(OPTION2) $(TEST)/$(SSAFILE) > out_debug.txt; \
 		less out_debug.txt; \
 	fi
 

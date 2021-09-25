@@ -298,7 +298,31 @@ fn evalparserinstr(
                 // TODO
                 panic!("evalparserinstr error in Ret: {:?}", fco);
             }
-        },
+        }
+        Src(fco) => match fco {
+            FirstClassObj::Variable(var) => {
+                let mut src = Register::new(var.frsn);
+                src.btday = *day + 1;
+                src.daday = *day + 1;
+                if let Some((btday, _)) = rglf.get(&var.frsn) {
+                    src.btday = *btday;
+                }
+                rglf.insert(src.vr, (src.btday, src.daday));
+                Some(src)
+            }
+            FirstClassObj::Num(valty, num) => {
+                let mut src = Register::new(nextfreshregister());
+                src.btday = *day + 1;
+                src.daday = *day + 1;
+                rbb.pushinstr(LowIrInstr::Movenum(src, num), day);
+                rglf.insert(src.vr, (src.btday, src.daday));
+                Some(src)
+            }
+            FirstClassObj::String(..) => {
+                // TODO
+                panic!("evalparserinstr error in Ret: {:?}", fco);
+            }
+        }
         Assign(_valuety, var, pinstr) => {
             let mut src = evalparserinstr(*pinstr, rglf, vstkd, rbb, day, stackpointer)
                 .unwrap_or_else(|| panic!("evalparserinstr error: Assign"));
@@ -435,7 +459,10 @@ fn evalparserinstr(
             rbb.pushinstr(LowIrInstr::Jmp(lb), day);
             None
         }
-        Phi(_) => None,
+        Phi(_) | Nop => None,
+        DummyOp => {
+            panic!("must not reach DummyOp");
+        }
     }
 }
 

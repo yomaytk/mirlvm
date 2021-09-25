@@ -71,16 +71,16 @@ pub fn removeuselessinstr(ssapg: &mut SsaProgram) {
             bid += 1;
         }
     }
-    let mut jmpzs = vec![];
+    // let mut jmpzs = vec![];
     while let Some(isr) = defliveisrs.pop() {
         let varnames = findvarsininstr(&isr);
-        let mut f = |hashs: &mut HashMap<&str, &mut SsaInstr>, varn: &str| {
-            if let Some(isr2) = hashs.remove(varn) {
-                isr2.living = true;
-                bbinfos.newlivbl(isr2.bblb);
-                // defliveisrs.push(isr2);
-            }
-        };
+        // let mut f = |hashs: &mut HashMap<&str, &mut SsaInstr>, varn: &str| {
+        //     if let Some(isr2) = hashs.remove(varn) {
+        //         isr2.living = true;
+        //         bbinfos.newlivbl(isr2.bblb);
+        //         // defliveisrs.push(isr2);
+        //     }
+        // };
         // var is living defined in isr
         for varn in varnames {
             if let Some(isrs) = nrmisrs.remove(varn) {
@@ -91,30 +91,30 @@ pub fn removeuselessinstr(ssapg: &mut SsaProgram) {
                 }
             }
         }
-        match isr.op {
-            Jmp(..) | Jnz(..) => {
-                jmpzs.push(isr);
-            }
-            _ => {}
-        }
+        // match isr.op {
+        //     Jmp(..) | Jnz(..) => {
+        //         jmpzs.push(isr);
+        //     }
+        //     _ => {}
+        // }
     }
-    while let Some(jisr) = jmpzs.pop() {
-        match jisr.op {
-            Jmp(lb) => {
-                jisr.living = bbinfos.bb_is_empty(lb) == 1;
-            }
-            Jnz(_, lb1, lb2) => {
-                jisr.living = bbinfos.bb_is_empty(lb1) == 1 && bbinfos.bb_is_empty(lb2) == 1;
-            }
-            _ => {}
-        }
-    }
+    // while let Some(jisr) = jmpzs.pop() {
+    //     match jisr.op {
+    //         Jmp(lb) => {
+    //             jisr.living = bbinfos.bb_is_empty(lb) == 1;
+    //         }
+    //         Jnz(_, lb1, lb2) => {
+    //             jisr.living = bbinfos.bb_is_empty(lb1) == 1 && bbinfos.bb_is_empty(lb2) == 1;
+    //         }
+    //         _ => {}
+    //     }
+    // }
 }
 
 fn findvarsininstr(isr: &SsaInstr) -> Vec<VarName> {
     let mut varnames = vec![];
     match &isr.op {
-        Ret(fco) => {
+        Ret(fco) | Src(fco) => {
             if let FirstClassObj::Variable(var) = fco {
                 varnames.push(var.name);
             }
@@ -160,7 +160,10 @@ fn findvarsininstr(isr: &SsaInstr) -> Vec<VarName> {
                 }
             }
         }
-        Jmp(_) | Alloc4(..) => {}
+        Jmp(_) | Alloc4(..) | Nop => {}
+        DummyOp => {
+            panic!("must not reach dummyOp.");
+        }
     }
     varnames
 }

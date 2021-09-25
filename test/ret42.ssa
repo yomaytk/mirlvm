@@ -1,5 +1,3 @@
-data $fmt = { b "One and one make %d!\n" }
-
 function w $main() {
 @start:
     ret 42

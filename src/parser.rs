@@ -27,7 +27,7 @@ fn cur_bbnum() -> usize {
     if bbn < 1 {
         panic!("BBNUM should be more than 0");
     }
-    bbn-1
+    bbn - 1
 }
 
 fn reset_bbnum() {
@@ -267,6 +267,9 @@ pub enum SsaInstrOp {
     Jnz(Var, Label, Label),
     Jmp(Label),
     Phi(Vec<(Label, FirstClassObj)>),
+    Src(FirstClassObj),
+    Nop,
+    DummyOp,
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -277,11 +280,18 @@ pub struct SsaInstr {
 }
 
 impl SsaInstr {
-    fn new(op: SsaInstrOp) -> Self {
+    pub fn new(op: SsaInstrOp) -> Self {
         Self {
             op,
             living: false,
             bblb: "",
+        }
+    }
+    pub fn getld_vn(&self) -> &'static str {
+        if let SsaInstrOp::Loadw(var) = &self.op {
+            var.name
+        } else {
+            panic!("getld_vn error: {:?}", self);
         }
     }
 }

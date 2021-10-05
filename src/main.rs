@@ -11,11 +11,10 @@ use mirlvm::parser::*;
 use mirlvm::rega::*;
 
 fn main() {
-    
     let args = env::args().collect::<Vec<String>>();
     let option = &args[1];
     let mut option2 = "";
-    
+
     if args.len() > 3 {
         option2 = &args[2];
     }

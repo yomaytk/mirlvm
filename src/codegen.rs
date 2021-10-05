@@ -122,6 +122,7 @@ pub fn gen_x64code(lirpg: LowIrProgram) {
                         let op = match binop {
                             Binop::Add => "add",
                             Binop::Sub => "sub",
+                            Binop::Mul => "mul",
                         };
                         match r2 {
                             RegorNum::Reg(r) => {

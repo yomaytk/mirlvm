@@ -9,6 +9,7 @@ pub static RESERVEDWORDS: &[(&str, TokenType)] = &[
     ("storew", TokenType::Storew),
     ("loadw", TokenType::Loadw),
     ("add", TokenType::Bop(Binop::Add)),
+    ("mul", TokenType::Bop(Binop::Mul)),
     ("sub", TokenType::Bop(Binop::Sub)),
     ("call", TokenType::Call),
     ("ceqw", TokenType::Ceqw),
@@ -42,6 +43,7 @@ pub static SIGNALS: &[(&str, TokenType)] = &[
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub enum Binop {
     Add,
+    Mul,
     Sub,
 }
 
@@ -202,6 +204,10 @@ impl TokenMass {
             Bop(Binop::Sub) => {
                 self.cpos += 1;
                 Some(Binop::Sub)
+            }
+            Bop(Binop::Mul) => {
+                self.cpos += 1;
+                Some(Binop::Mul)
             }
             _ => None,
         }

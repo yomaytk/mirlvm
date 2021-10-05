@@ -1,0 +1,32 @@
+function w $main() {
+@l0:
+	%t =l alloc8 8
+	%i =l alloc4 4
+	%c =l alloc4 4
+	%t2 =w mul 4, 10
+	%t1 =l call $malloc(w %t2, ...)
+	storel %t1, %t
+	storew 0, %i
+@l1:
+	%t8 =w loadw %i
+	%t7 =w csltw %t8, 10
+	jnz %t7, @l2, @l3
+@l2:
+	%t11 =w loadw %i
+	%t13 =l loadl %t
+	%t14 =w loadw %i
+	%t15 =l extsw %t14
+	%t16 =l mul 4, %t15
+	%t12 =l add %t13, %t16
+	storew %t11, %t12
+	%t18 =w loadw %i
+	%t17 =w add %t18, 1
+	storew %t17, %i
+	jmp @l1
+@l3:
+	%t21 =l loadl %t
+	%t20 =l add %t21, 20
+	%t19 =w loadw %t20
+	ret %t19
+}
+

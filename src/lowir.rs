@@ -134,6 +134,7 @@ impl fmt::Display for LowIrInstr {
                 let bop = match binop {
                     Binop::Add => "add",
                     Binop::Sub => "sub",
+                    Binop::Mul => "mul",
                 };
                 let rhs = match r2 {
                     RegorNum::Num(num) => format!("{}", num),
@@ -298,7 +299,7 @@ fn evalparserinstr(
                 // TODO
                 panic!("evalparserinstr error in Ret: {:?}", fco);
             }
-        }
+        },
         Src(fco) => match fco {
             FirstClassObj::Variable(var) => {
                 let mut src = Register::new(var.frsn);
@@ -322,7 +323,7 @@ fn evalparserinstr(
                 // TODO
                 panic!("evalparserinstr error in Ret: {:?}", fco);
             }
-        }
+        },
         Assign(_valuety, var, pinstr) => {
             let mut src = evalparserinstr(*pinstr, rglf, vstkd, rbb, day, stackpointer)
                 .unwrap_or_else(|| panic!("evalparserinstr error: Assign"));

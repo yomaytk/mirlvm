@@ -14,7 +14,7 @@ alltests: $(BUILD)
 
 debug: $(BUILD)
 	@if [ $(OPTION) = "null" -o $(OPTION) = "-O1" ]; then \
-		$(BIN) $(TEST)/$(SSAFILE) > debug.s; \
+		$(BIN) $(TEST)/ret42.ssa > debug.s; \
 		gcc debug.s; \
 	else \
 		$(BIN) $(OPTION) $(OPTION2) $(TEST)/$(SSAFILE) > out_debug.txt; \

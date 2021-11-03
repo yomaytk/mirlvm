@@ -13,6 +13,7 @@ pub mod rega;
 
 type Label = &'static str;
 type VarName = &'static str;
+type BBLabel = &'static str;
 
 pub static PROGRAM: Lazy<String> = Lazy::new(|| {
     let file: String = env::args().collect::<Vec<String>>().last().unwrap().clone();

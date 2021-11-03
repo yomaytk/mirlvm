@@ -208,7 +208,7 @@ impl DominatorFrontier {
             }
         }
 
-        bbs[bbi].df = df.clone();
+        bbs[bbi].domfros = df.clone();
         self.domf[bbi] = df;
     }
 }

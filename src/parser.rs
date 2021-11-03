@@ -225,7 +225,7 @@ pub struct SsaBlock {
     pub instrs: Vec<SsaInstr>,
     pub transbbs: Vec<&'static str>,
     pub idom: usize,
-    pub df: Vec<usize>,
+    pub domfros: Vec<usize>,
 }
 
 impl SsaBlock {
@@ -236,7 +236,7 @@ impl SsaBlock {
             instrs,
             transbbs: vec![],
             idom: std::usize::MAX,
-            df: vec![],
+            domfros: vec![],
         }
     }
 }
@@ -266,7 +266,7 @@ pub enum SsaInstrOp {
     Comp(CompOp, Var, Var, FirstClassObj),
     Jnz(Var, Label, Label),
     Jmp(Label),
-    Phi(Vec<(Label, FirstClassObj)>),
+    Phi(Option<&'static str>, Vec<(Label, FirstClassObj)>),
     Src(FirstClassObj),
     Nop,
     DummyOp,
@@ -287,11 +287,28 @@ impl SsaInstr {
             bblb: "",
         }
     }
+    pub fn new_all(op: SsaInstrOp, living: bool, bblb: Label) -> Self {
+        Self { op, living, bblb }
+    }
     pub fn getld_vn(&self) -> &'static str {
         if let SsaInstrOp::Loadw(var) = &self.op {
             var.name
         } else {
             panic!("getld_vn error: {:?}", self);
+        }
+    }
+    pub fn getalloca_label(&self) -> Label {
+        if let SsaInstrOp::Phi(alloca_label, _) = &self.op {
+            alloca_label.clone().unwrap()
+        } else {
+            panic!("getalloca_label error");
+        }
+    }
+    pub fn getincoming_fcos(&self) -> Vec<(Label, FirstClassObj)> {
+        if let SsaInstrOp::Phi(_, incoming_fcos) = &self.op {
+            incoming_fcos.clone()
+        } else {
+            panic!("getincoming_fcos error.");
         }
     }
 }
@@ -403,7 +420,7 @@ fn parseinstrrhs(
             let fco = tms.getfco_n(VarType::Word, env);
             pv.push((lb, fco));
         }
-        return SsaInstr::new(SsaInstrOp::Phi(pv));
+        return SsaInstr::new(SsaInstrOp::Phi(None, pv));
     }
     let curtk = tms.getcurrent_token();
     panic!(

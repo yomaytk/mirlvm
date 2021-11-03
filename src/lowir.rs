@@ -460,7 +460,8 @@ fn evalparserinstr(
             rbb.pushinstr(LowIrInstr::Jmp(lb), day);
             None
         }
-        Phi(_) | Nop => None,
+        Phi(..) => Some(Register::new(i32::MAX)),
+        Nop => None,
         DummyOp => {
             panic!("must not reach DummyOp");
         }

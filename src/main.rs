@@ -74,15 +74,24 @@ fn main() {
             println!("function: {}", func.name);
             for bb in &func.bls {
                 println!(
-                    "\tlabel: {}, id: {}, instrscount: {}, transition blocks: {:?}. idom: {}, df: {:?}",
+                    "\tlabel: {}, id: {}, instrscount: {}, transition blocks: {:?}. idom: {}, domf: {:?}",
                     bb.lb,
                     bb.id,
                     bb.instrs.len(),
                     bb.transbbs,
                     bb.idom,
-                    bb.df,
+                    bb.domfros,
                 );
             }
+        }
+        return;
+    }
+
+    if option == "--out-graph" {
+        for func in &ssaprogram.funcs {
+            println!("function: {}", func.name);
+            println!("graph: {:?}", func.cfg.as_ref().unwrap().graph);
+            println!("rgraph: {:?}", func.cfg.as_ref().unwrap().rgraph);
         }
         return;
     }
@@ -91,11 +100,12 @@ fn main() {
 
     // SSA optical phase
     // remove useless instr
-    if option == "-O1" {
+    if option2 == "-O1" {
         ezmem2reg(&mut ssaprogram);
+        mem2reg(&mut ssaprogram);
     }
 
-    if option2 == "--out-ssair_1" {
+    if option == "--out-ssair_1" {
         for func in &ssaprogram.funcs {
             println!("function {}", func.name);
             for b in &func.bls {

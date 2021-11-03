@@ -15,5 +15,8 @@ function w $main() {
 	storew 54, %a
 @l3:
 	%t11 =w loadw %a
-    ret %t11
+@l4:
+	%t12 =w loadw %a
+	%t13 =w add %t12, %t11
+	ret %t13
 }

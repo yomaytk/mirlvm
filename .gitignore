@@ -1,6 +1,7 @@
 /target
 *.s
 *.out
-src/gen_ir.rs
+src/bb_ir.rs
 out_debug.txt
 task.txt
+memo.txt

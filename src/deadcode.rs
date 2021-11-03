@@ -153,7 +153,7 @@ fn findvarsininstr(isr: &SsaInstr) -> Vec<VarName> {
                 varnames.push(var3.name);
             }
         }
-        Phi(vs) => {
+        Phi(_, vs) => {
             for v in vs {
                 if let FirstClassObj::Variable(var) = &v.1 {
                     varnames.push(var.name);

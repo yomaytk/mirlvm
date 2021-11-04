@@ -3,7 +3,7 @@ use super::lexer::*;
 use super::mem2reg::*;
 use super::*;
 use once_cell::sync::Lazy;
-use std::collections::HashMap;
+use std::collections::{HashMap};
 use std::sync::Mutex;
 
 static FRESHREGNUM: Lazy<Mutex<i32>> = Lazy::new(|| Mutex::new(0));
@@ -80,7 +80,7 @@ impl ValueType {
     }
 }
 
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub enum VarType {
     Word,
     Long,
@@ -205,7 +205,7 @@ impl SsaFunction {
     }
 }
 
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Var {
     pub name: &'static str,
     pub ty: VarType,
@@ -241,11 +241,33 @@ impl SsaBlock {
     }
 }
 
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, Eq)]
 pub enum FirstClassObj {
     Variable(Var),
     Num(VarType, i32),
     String(&'static str),
+}
+
+impl PartialEq for FirstClassObj {
+    fn eq(&self, other: &Self) -> bool {
+        use FirstClassObj::*;
+        match (self, other) {
+            (Variable(var1), Variable(var2)) => {
+                if var1.name == var2.name {
+                    true
+                } else {
+                    false 
+                }
+            }
+            (Num(_, num1), Num(_, num2)) => {
+                num1 == num2
+            }
+            (String(string1), String(string2)) => {
+                string1 == string2
+            }
+            _ => false
+        }
+    }
 }
 
 #[derive(Clone, Copy, Debug, PartialEq)]

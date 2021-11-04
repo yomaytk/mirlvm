@@ -5,8 +5,12 @@ use super::parser::{
 };
 use super::*;
 use once_cell::sync::Lazy;
+use std::collections::VecDeque;
 use std::collections::{HashMap, HashSet};
 use std::sync::Mutex;
+extern crate rand;
+use rand::seq::SliceRandom;
+
 
 pub static FRESH_NUM_MAP: Lazy<Mutex<HashMap<usize, &'static str>>> =
     Lazy::new(|| Mutex::new(HashMap::new()));
@@ -159,15 +163,17 @@ pub fn mem2reg(spg: &mut SsaProgram) {
             vec![vec![]; func.cfg.as_deref().unwrap().graph.len()];
         for (_, value) in func.m2rinfo.iter() {
             for defbb in &value.defbbs {
-                let domfs = &func.bls[*defbb].domfros;
-                for _ in domfs.into_iter().map(|domf| {
-                    if *domf >= insert_phi_bbs.capacity() {
+                let mut inserted_domfs = func.bls[*defbb].domfros.clone();
+                while let Some(domf) = inserted_domfs.pop() {
+                    if domf >= insert_phi_bbs.capacity() {
                         panic!("insert_phi_bbs capacity error.");
                     }
-                    if !insert_phi_bbs[*domf].contains(&PhiNode(value.name)) {
-                        insert_phi_bbs[*domf].push(PhiNode(value.name));
+                    if !insert_phi_bbs[domf].contains(&PhiNode(value.name)) {
+                        insert_phi_bbs[domf].push(PhiNode(value.name));
+                        let mut continued_domfs = func.bls[domf].domfros.clone();
+                        inserted_domfs.append(&mut continued_domfs);
                     }
-                }) {}
+                }
             }
         }
         for bb in &mut func.bls {
@@ -201,39 +207,66 @@ pub fn mem2reg(spg: &mut SsaProgram) {
     }
     // convert target load to src register
     for func in &mut spg.funcs {
-        let mut walked_bbs = vec![false; func.cfg.as_ref().unwrap().graph.len()];
+        let mut able_reach_nodes = vec![HashSet::new(); func.cfg.as_ref().unwrap().graph.len()];
+        let mut edge_nums = 0;
+        for nodes in &func.cfg.as_ref().unwrap().graph {
+            edge_nums += nodes.len();
+        }
+        for snode in 0..able_reach_nodes.len() {
+            let mut walked = vec![usize::MAX; able_reach_nodes.len()];
+            let mut dequeue = VecDeque::new();
+            dequeue.push_back(snode);
+            while let Some(node) = dequeue.pop_front() {
+                for enode in &func.cfg.as_ref().unwrap().graph[node] {
+                    if walked[*enode] != usize::MAX {
+                        continue;
+                    }
+                    dequeue.push_back(*enode);
+                    walked[*enode] = *enode;
+                }
+            }
+            able_reach_nodes[snode] = walked
+                .iter()
+                .filter(|&node| *node != usize::MAX)
+                .cloned()
+                .collect::<HashSet<usize>>();
+        }
         let target_id = 0;
-        walked_bbs[0] = true;
         let incoming_nodes = HashMap::new();
         let alloca_newvar_hash = HashMap::new();
+        let mut current_reached_nodes = HashSet::new();
+        let mut reached_edges = HashSet::new();
         walk_bb(
             incoming_nodes,
             alloca_newvar_hash,
             &func.cfg,
             &mut func.bls,
-            &mut walked_bbs,
+            &able_reach_nodes,
+            &mut current_reached_nodes,
+            &mut reached_edges,
+            &edge_nums,
             target_id,
-        )
+            false,
+        );
+        println!("{:?}", reached_edges);
     }
     // delete unneccessary alloca and store
     for func in &mut spg.funcs {
         let m2rinfo = &func.m2rinfo;
+        use MemToregType::*;
+        use SsaInstrOp::*;
         for bb in &mut func.bls {
             bb.instrs = bb
                 .instrs
                 .iter()
-                .filter(|&isr| {
-                    use MemToregType::*;
-                    use SsaInstrOp::*;
-                    match &isr.op {
-                        Alloc4(alloca_var, _) | Storew(_, alloca_var) => {
-                            match m2rinfo.get(alloca_var.name).unwrap().ty.unwrap() {
-                                OneStore | OneBlock | General => false,
-                                Necessary => true,
-                            }
+                .filter(|&isr| match &isr.op {
+                    Alloc4(alloca_var, _) | Storew(_, alloca_var) => {
+                        match m2rinfo.get(alloca_var.name).unwrap().ty.unwrap() {
+                            OneStore | OneBlock | General => false,
+                            Necessary => true,
                         }
-                        _ => true,
                     }
+                    _ => true,
                 })
                 .cloned()
                 .collect::<Vec<SsaInstr>>();
@@ -243,15 +276,19 @@ pub fn mem2reg(spg: &mut SsaProgram) {
 
 fn walk_bb(
     mut incoming_nodes: HashMap<Label, Vec<(Label, FirstClassObj)>>,
-    mut alloca_newvar_hash: HashMap<(BBLabel, Label), Var>,
+    mut alloca_newvar_hash: HashMap<Label, Var>,
     cfg: &Option<Box<ControlFlowGraph>>,
     bbs: &mut Vec<SsaBlock>,
-    walked_bbs: &mut Vec<bool>,
+    able_reach_nodes: &Vec<HashSet<usize>>,
+    current_reached_nodes: &mut HashSet<usize>,
+    reached_edges: &mut HashSet<(usize, usize)>,
+    edge_nums: &usize,
     target_id: usize,
+    mut new_edge: bool,
 ) {
     let tbb = &mut bbs[target_id];
+    use SsaInstrOp::*;
     for isr in &mut tbb.instrs {
-        use SsaInstrOp::*;
         match &isr.op {
             Storew(fco, var) => {
                 let alloca_label = var.name;
@@ -259,7 +296,7 @@ fn walk_bb(
             }
             Assign(vty, var, rhs) if matches!(&rhs.op, Loadw(_)) => {
                 let alloca_label = rhs.getld_vn();
-                let phi_var_opt = alloca_newvar_hash.get(&(tbb.lb, alloca_label));
+                let phi_var_opt = alloca_newvar_hash.get(alloca_label);
                 if let Some(phi_var) = phi_var_opt {
                     isr.op = Assign(
                         *vty,
@@ -274,15 +311,25 @@ fn walk_bb(
             }
             Assign(vty, var, rhs) if matches!(&rhs.op, Phi(_, _)) => {
                 let alloca_label = rhs.getalloca_label();
-                if !alloca_newvar_hash.contains_key(&(tbb.lb, alloca_label)) {
-                    alloca_newvar_hash.insert((tbb.lb, alloca_label), var.clone());
-                }
+                alloca_newvar_hash.insert(alloca_label, var.clone());
                 let mut incoming_fcos = rhs.getincoming_fcos();
                 let add_incoming_fcos = incoming_nodes.get_into(alloca_label);
                 if let None = add_incoming_fcos {
                     continue;
                 }
-                incoming_fcos.append(&mut add_incoming_fcos.unwrap());
+                'outer1: for (tbb_lb1, fco1) in add_incoming_fcos.unwrap() {
+                    for (tbb_lb2, _) in &incoming_fcos {
+                        if &tbb_lb1 == tbb_lb2 {
+                            continue 'outer1;
+                        }
+                    }
+                    incoming_fcos.push((tbb_lb1, fco1));
+                }
+                // new var assigend phi function
+                incoming_nodes.insert(
+                    alloca_label,
+                    vec![(tbb.lb, FirstClassObj::Variable(var.clone()))],
+                );
                 isr.op = Assign(
                     *vty,
                     var.clone(),
@@ -296,22 +343,41 @@ fn walk_bb(
             _ => {}
         }
     }
-    walked_bbs[target_id] = true;
-    let graphs = cfg.as_ref().unwrap();
-    for come_id in &graphs.rgraph[target_id] {
-        walked_bbs[target_id] &= walked_bbs[*come_id];
+    
+    if new_edge {
+        current_reached_nodes.clear();
     }
-    for next_id in &graphs.graph[target_id] {
-        if walked_bbs[*next_id] {
-            continue;
+
+    let mut next_nodes = vec![];
+    'outer2: loop {
+        if cfg.as_ref().unwrap().graph[target_id].len() == 0 {
+            break;
         }
-        walk_bb(
-            incoming_nodes.clone(),
-            alloca_newvar_hash.clone(),
-            cfg,
-            bbs,
-            walked_bbs,
-            *next_id,
-        );
+        next_nodes.clone_from(&cfg.as_ref().unwrap().graph[target_id]);
+        next_nodes.shuffle(&mut rand::thread_rng());
+        for next_id in &next_nodes {
+            if able_reach_nodes[target_id].is_subset(current_reached_nodes) {
+                break 'outer2;
+            }
+            if reached_edges.contains(&(target_id, *next_id)) {
+                new_edge = false;
+            } else {
+                reached_edges.insert((target_id, *next_id));
+                new_edge = true;
+            }
+            current_reached_nodes.insert(*next_id);
+            walk_bb(
+                incoming_nodes.clone(),
+                alloca_newvar_hash.clone(),
+                cfg,
+                bbs,
+                able_reach_nodes,
+                current_reached_nodes,
+                reached_edges,
+                edge_nums,
+                *next_id,
+                new_edge,
+            );
+        }
     }
 }

@@ -3,7 +3,7 @@ use super::lexer::*;
 use super::mem2reg::*;
 use super::*;
 use once_cell::sync::Lazy;
-use std::collections::{HashMap};
+use std::collections::HashMap;
 use std::sync::Mutex;
 
 static FRESHREGNUM: Lazy<Mutex<i32>> = Lazy::new(|| Mutex::new(0));
@@ -256,16 +256,22 @@ impl PartialEq for FirstClassObj {
                 if var1.name == var2.name {
                     true
                 } else {
-                    false 
+                    false
                 }
             }
-            (Num(_, num1), Num(_, num2)) => {
-                num1 == num2
-            }
-            (String(string1), String(string2)) => {
-                string1 == string2
-            }
-            _ => false
+            (Num(_, num1), Num(_, num2)) => num1 == num2,
+            (String(string1), String(string2)) => string1 == string2,
+            _ => false,
+        }
+    }
+}
+
+impl FirstClassObj {
+    pub fn get_varlb(&self) -> Option<&'static str> {
+        if let Self::Variable(var) = self {
+            Some(var.name)
+        } else {
+            None
         }
     }
 }
@@ -292,6 +298,16 @@ pub enum SsaInstrOp {
     Src(FirstClassObj),
     Nop,
     DummyOp,
+}
+
+impl SsaInstrOp {
+    pub fn get_phi_vec(&self) -> Option<Vec<(Label, FirstClassObj)>> {
+        if let SsaInstrOp::Phi(_, phi_vecs) = &self {
+            Some(phi_vecs.clone())
+        } else {
+            None
+        }
+    }
 }
 
 #[derive(Clone, Debug, PartialEq)]

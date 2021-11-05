@@ -10,6 +10,7 @@ pub mod lowir;
 pub mod mem2reg;
 pub mod parser;
 pub mod rega;
+pub mod rev_ssa;
 
 type Label = &'static str;
 type VarName = &'static str;

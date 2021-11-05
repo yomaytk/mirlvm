@@ -11,7 +11,6 @@ use std::sync::Mutex;
 extern crate rand;
 use rand::seq::SliceRandom;
 
-
 pub static FRESH_NUM_MAP: Lazy<Mutex<HashMap<usize, &'static str>>> =
     Lazy::new(|| Mutex::new(HashMap::new()));
 pub static FRESH_N: Lazy<Mutex<usize>> = Lazy::new(|| Mutex::new(0));
@@ -248,7 +247,6 @@ pub fn mem2reg(spg: &mut SsaProgram) {
             target_id,
             false,
         );
-        println!("{:?}", reached_edges);
     }
     // delete unneccessary alloca and store
     for func in &mut spg.funcs {
@@ -343,7 +341,7 @@ fn walk_bb(
             _ => {}
         }
     }
-    
+
     if new_edge {
         current_reached_nodes.clear();
     }

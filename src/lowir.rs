@@ -338,7 +338,7 @@ fn evalparserinstr(
             None
         }
         Alloc4(var, _align) => {
-            *stackpointer += _align;
+            *stackpointer += 4;
             let dst = Register::newall(var.frsn, *day, *day, var.ty.toregrefsize());
             assert_eq!(dst.regsize, 8);
             rglf.insert(dst.vr, (*day, *day));
@@ -460,7 +460,7 @@ fn evalparserinstr(
             rbb.pushinstr(LowIrInstr::Jmp(lb), day);
             None
         }
-        Phi(..) => Some(Register::new(i32::MAX)),
+        Phi(..) => panic!("Phi node must not present in lowir phase."),
         Nop => None,
         DummyOp => {
             panic!("must not reach DummyOp");

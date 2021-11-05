@@ -9,6 +9,7 @@ use mirlvm::lowir::*;
 use mirlvm::mem2reg::*;
 use mirlvm::parser::*;
 use mirlvm::rega::*;
+use mirlvm::rev_ssa::*;
 
 fn main() {
     let args = env::args().collect::<Vec<String>>();
@@ -100,10 +101,10 @@ fn main() {
 
     // SSA optical phase
     // remove useless instr
-    if option2 == "-O1" {
+    // if option2 == "-O1" {
         ezmem2reg(&mut ssaprogram);
         mem2reg(&mut ssaprogram);
-    }
+    // }
 
     if option == "--out-ssair_1" {
         for func in &ssaprogram.funcs {
@@ -120,10 +121,28 @@ fn main() {
         return;
     }
 
+    rev_ssa(&mut ssaprogram);
+
+    if option == "--out-norm_fmt" {
+        for func in &ssaprogram.funcs {
+            println!("function {}", func.name);
+            for b in &func.bls {
+                println!("{}:", b.lb);
+                for instr in &b.instrs {
+                    if instr.living {
+                        println!("{:?}", instr);
+                    }
+                }
+            }
+        }
+        return;
+    }
+
     // generate very low code
     let lirpg = genlowir(ssaprogram);
+
     if option == "--out-lowir" {
-        println!("{:#?}", lirpg);
+        println!("{:?}", lirpg);
         return;
     }
 

@@ -209,12 +209,12 @@ impl SsaFunction {
 pub struct Var {
     pub name: &'static str,
     pub ty: VarType,
-    pub frsn: i32,
+    pub rg_vr: i32,
 }
 
 impl Var {
-    pub fn new(name: &'static str, ty: VarType, frsn: i32) -> Self {
-        Self { name, ty, frsn }
+    pub fn new(name: &'static str, ty: VarType, rg_vr: i32) -> Self {
+        Self { name, ty, rg_vr }
     }
 }
 
@@ -453,10 +453,23 @@ fn parseinstrrhs(
     }
     if tms.eq_tkty(TokenType::Phi) {
         let mut pv = vec![];
-        while tms.cur_tkty() == TokenType::Blocklb {
+        loop {
+            assert_eq!(tms.cur_tkty(), TokenType::Blocklb);
             let lb = tms.gettext_n();
-            let fco = tms.getfco_n(VarType::Word, env);
+            let fco;
+            match tms.getcurrent_token().tty {
+                TokenType::Ident => {
+                    fco =
+                        FirstClassObj::Variable(Var::new("dummy_for_phi", VarType::Void, i32::MAX));
+                }
+                _ => {
+                    fco = tms.getfco_n(VarType::Word, env);
+                }
+            }
             pv.push((lb, fco));
+            if !tms.eq_tkty(TokenType::Comma) {
+                break;
+            }
         }
         return SsaInstr::new(SsaInstrOp::Phi(None, pv));
     }
@@ -553,7 +566,11 @@ fn parseinstroverall(
     if tms.cur_tkty() == TokenType::Call {
         return parseinstrrhs(tms, env, m2rinfo);
     }
-    panic!("parseinstroverall error. {:?}", tms.getcurrent_token());
+    panic!(
+        "parseinstroverall error. {:?}\n{:?}",
+        tms.getcurrent_token(),
+        tms.tks[tms.cpos + 1].get_text()
+    );
 }
 
 // parse basic block
@@ -565,9 +582,14 @@ fn parsebb(
     let mut ssb = SsaBlock::new(tms.gettext_n(), get_bbnum_n(), vec![]);
     let mut transbbs = vec![];
     tms.as_tkty(TokenType::Colon);
+    let mut empty_block = true;
     loop {
         let tkty = tms.cur_tkty();
         if tkty == TokenType::Blocklb {
+            if empty_block {
+                transbbs.push(tms.gettext());
+                break;
+            }
             match ssb.instrs[ssb.instrs.len() - 1].op {
                 SsaInstrOp::Jnz(..) | SsaInstrOp::Jmp(..) => {}
                 _ => {
@@ -581,6 +603,7 @@ fn parsebb(
         }
         ssb.instrs
             .push(parseinstroverall(tms, env, &mut transbbs, m2rinfo));
+        empty_block = false;
     }
     ssb.transbbs = transbbs;
     ssb
@@ -612,6 +635,7 @@ fn parseargs(tms: &mut TokenMass, env: &mut Env) -> Vec<Var> {
 // parse function ...
 fn parsefun(tms: &mut TokenMass, env: &mut Env) -> SsaFunction {
     let mut sfn = SsaFunction::new("", VarType::Void);
+    tms.as_tkty(TokenType::Function);
     if tms.cur_tkty() != TokenType::Dollar {
         sfn.retty = tms.gettype_n();
     }

@@ -188,6 +188,9 @@ pub fn gen_x64code(lirpg: LowIrProgram) {
                     Jmp(lb) => {
                         print!("\tjmp {}\n", lb);
                     }
+                    LowNop => {
+                        panic!("cannot reach this instr.");
+                    }
                 }
             }
         }

@@ -213,7 +213,6 @@ impl TokenMass {
         }
     }
     pub fn getfuncdata(&mut self) -> (&'static str, VarType) {
-        self.cpos += 1;
         let retty;
         let back;
         if self.cur_tkty() == TokenType::Dollar {
@@ -247,7 +246,7 @@ impl Token {
             num,
         }
     }
-    fn get_text(&self) -> &'static str {
+    pub fn get_text(&self) -> &'static str {
         &(*PROGRAM)[self.poss..self.pose]
     }
 }

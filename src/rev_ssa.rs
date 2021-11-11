@@ -108,6 +108,10 @@ fn cal_var_lifes(
     for func in &spg.funcs {
         for bb in &func.bls {
             bb_instr_lifes.insert(bb.lb, (day, usize::MAX));
+            if bb.instrs.is_empty() {
+                bb_instr_lifes.insert(bb.lb, (usize::MAX, usize::MAX));
+                continue;
+            }
             for instr in &bb.instrs {
                 sub_cal_var_lifes(instr, &mut lifes, day);
                 day += 1;

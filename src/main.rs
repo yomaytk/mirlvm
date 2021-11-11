@@ -101,10 +101,10 @@ fn main() {
 
     // SSA optical phase
     // remove useless instr
-    // if option2 == "-O1" {
+    if option2 == "-O1" {
         ezmem2reg(&mut ssaprogram);
         mem2reg(&mut ssaprogram);
-    // }
+    }
 
     if option == "--out-ssair_1" {
         for func in &ssaprogram.funcs {
@@ -125,7 +125,7 @@ fn main() {
 
     if option == "--out-norm_fmt" {
         for func in &ssaprogram.funcs {
-            println!("function {}", func.name);
+            println!("func: {}", func.name);
             for b in &func.bls {
                 println!("{}:", b.lb);
                 for instr in &b.instrs {
@@ -142,16 +142,26 @@ fn main() {
     let lirpg = genlowir(ssaprogram);
 
     if option == "--out-lowir" {
-        println!("{:?}", lirpg);
+        for func in &lirpg.funcs {
+            println!("fun: {}", func.lb);
+            for bb in &func.rbbs {
+                println!("{}:", bb.lb);
+                for isr in &bb.instrs {
+                    println!("{}", isr);
+                }
+            }
+        }
         return;
     }
 
     // register allocate
     let lirpg2 = registeralloc(lirpg);
+
     if option == "--out-lowir_rega" {
         println!("{:#?}", lirpg2);
         return;
     }
+
     if option == "--out-lowir-ISA" {
         for func in lirpg2.funcs {
             println!("Function {}:", func.lb);

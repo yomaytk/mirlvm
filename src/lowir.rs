@@ -21,6 +21,13 @@ impl AppHash for HashMap<i32, (i32, i32)> {
     }
 }
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum NeedStack {
+    Exist(i32),
+    NoExist(i32),
+    NoNeed,
+}
+
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct Register {
     pub vr: i32,
@@ -28,6 +35,35 @@ pub struct Register {
     pub btday: i32,
     pub daday: i32,
     pub regsize: i32,
+}
+
+pub struct StashStacked {
+    pub vecs: Vec<Option<Register>>,
+}
+
+impl StashStacked {
+    pub fn new() -> Self {
+        Self { vecs: vec![] }
+    }
+    pub fn store2stack(&mut self, reg: Register) -> i32 {
+        for (i, v) in &mut self.vecs.iter_mut().enumerate() {
+            if let None = v {
+                *v = Some(reg);
+                return (i as i32 + 1) * 8;
+            }
+        }
+        self.vecs.push(Some(reg));
+        self.vecs.len() as i32 * 8
+    }
+    pub fn read4stack(&mut self, reg: Register) -> Option<i32> {
+        for (i, v) in self.vecs.iter_mut().enumerate() {
+            if v.is_some() && v.unwrap().vr == reg.vr {
+                *v = None;
+                return Some((i as i32 + 1) * 8);
+            }
+        }
+        None
+    }
 }
 
 impl Register {
@@ -49,28 +85,50 @@ impl Register {
             regsize,
         }
     }
-    pub fn regalloc(&mut self, realregs: &mut [i32; GENEREGSIZE]) {
+    pub fn regalloc(
+        &mut self,
+        realregs: &mut [Option<Register>; GENEREGSIZE],
+        stash_stacked: &mut StashStacked,
+    ) -> NeedStack {
         if self.vr < 0 {
             self.rr = GENEREGSIZE as i32 - 1 + -(self.vr);
-            return;
+            return NeedStack::NoNeed;
         }
         // find register already allocated
         let mut newrr = -1;
         for i in 0..GENEREGSIZE {
-            if realregs[i] == self.vr {
-                self.rr = i as i32;
-                return;
+            if let Some(reg) = realregs[i] {
+                if reg.vr == self.vr {
+                    self.rr = i as i32;
+                    return NeedStack::NoNeed;
+                }
             }
-            if newrr == -1 && realregs[i] == -1 {
+            if newrr == -1 && realregs[i] == None {
                 newrr = i as i32;
             }
         }
-        // new register allocate
         if newrr == -1 {
-            panic!("Not enough register.");
+            // all register are used.
+            // exist virtual register in memory.
+            if let Some(offset) = stash_stacked.read4stack(self.clone()) {
+                let tmp_id = offset as usize / 8 - 1;
+                assert!(stash_stacked.vecs[tmp_id].is_none());
+                stash_stacked.vecs[tmp_id] = realregs[0];
+                self.rr = 0;
+                realregs[0] = Some(self.clone());
+                return NeedStack::Exist(offset);
+            } else {
+                // no exist virtual register in memory.
+                let offset = stash_stacked.store2stack(realregs[0].unwrap());
+                self.rr = 0;
+                realregs[0] = Some(self.clone());
+                return NeedStack::NoExist(offset);
+            }
         } else {
+            // new register allocate
             self.rr = newrr;
-            realregs[self.rr as usize] = self.vr;
+            realregs[self.rr as usize] = Some(self.clone());
+            NeedStack::NoNeed
         }
     }
 }
@@ -94,6 +152,7 @@ pub enum LowIrInstr {
     Comp(CompOp, Register, Register, RegorNum),
     Jnz(Register, Label, Label),
     Jmp(Label),
+    LowNop,
 }
 
 impl fmt::Display for LowIrInstr {
@@ -209,6 +268,9 @@ impl fmt::Display for LowIrInstr {
             Jmp(lb) => {
                 write!(f, "\tjmp {}", lb)
             }
+            LowNop => {
+                write!(f, "LowNop")
+            }
         }
     }
 }
@@ -276,10 +338,10 @@ fn evalparserinstr(
     match pinstr.op {
         Ret(fco) => match fco {
             FirstClassObj::Variable(var) => {
-                let mut src = Register::new(var.frsn);
+                let mut src = Register::new(var.rg_vr);
                 src.btday = *day + 1;
                 src.daday = *day + 1;
-                if let Some((btday, _)) = rglf.get(&var.frsn) {
+                if let Some((btday, _)) = rglf.get(&var.rg_vr) {
                     src.btday = *btday;
                 }
                 rbb.pushinstr(LowIrInstr::Ret(src), day);
@@ -302,10 +364,10 @@ fn evalparserinstr(
         },
         Src(fco) => match fco {
             FirstClassObj::Variable(var) => {
-                let mut src = Register::new(var.frsn);
+                let mut src = Register::new(var.rg_vr);
                 src.btday = *day + 1;
                 src.daday = *day + 1;
-                if let Some((btday, _)) = rglf.get(&var.frsn) {
+                if let Some((btday, _)) = rglf.get(&var.rg_vr) {
                     src.btday = *btday;
                 }
                 rglf.insert(src.vr, (src.btday, src.daday));
@@ -327,8 +389,8 @@ fn evalparserinstr(
         Assign(_valuety, var, pinstr) => {
             let mut src = evalparserinstr(*pinstr, rglf, vstkd, rbb, day, stackpointer)
                 .unwrap_or_else(|| panic!("evalparserinstr error: Assign"));
-            let mut dst = Register::newall(var.frsn, *day + 1, *day + 1, var.ty.toregrefsize());
-            if let Some((btday, _)) = rglf.get(&var.frsn) {
+            let mut dst = Register::newall(var.rg_vr, *day + 1, *day + 1, var.ty.toregrefsize());
+            if let Some((btday, _)) = rglf.get(&var.rg_vr) {
                 dst.btday = *btday;
             }
             src.daday = *day + 1;
@@ -339,17 +401,17 @@ fn evalparserinstr(
         }
         Alloc4(var, _align) => {
             *stackpointer += 4;
-            let dst = Register::newall(var.frsn, *day, *day, var.ty.toregrefsize());
+            let dst = Register::newall(var.rg_vr, *day, *day, var.ty.toregrefsize());
             assert_eq!(dst.regsize, 8);
             rglf.insert(dst.vr, (*day, *day));
-            vstkd.insert(var.frsn, *stackpointer);
+            vstkd.insert(var.rg_vr, *stackpointer);
             None
         }
         Storew(fco, dstvar) => {
             let _bytesize = dstvar.ty.stacksize();
             // variable stack pointer
             let varsp = vstkd
-                .get(&dstvar.frsn)
+                .get(&dstvar.rg_vr)
                 .unwrap_or_else(|| panic!("var can't be found in Storew"));
             match fco {
                 FirstClassObj::Num(valty, num) => {
@@ -357,14 +419,14 @@ fn evalparserinstr(
                 }
                 FirstClassObj::Variable(srcvar) => {
                     let src;
-                    if let Some((btday, _)) = rglf.get(&srcvar.frsn) {
+                    if let Some((btday, _)) = rglf.get(&srcvar.rg_vr) {
                         src = Register::newall(
-                            srcvar.frsn,
+                            srcvar.rg_vr,
                             *btday,
                             *day + 1,
                             srcvar.ty.toregrefsize(),
                         );
-                        rglf.insert(srcvar.frsn, (src.btday, src.daday));
+                        rglf.insert(srcvar.rg_vr, (src.btday, src.daday));
                     } else {
                         panic!("{:?} is not defined", srcvar);
                     }
@@ -379,11 +441,11 @@ fn evalparserinstr(
         }
         Loadw(var) => {
             let (scbt, _) = rglf
-                .get(&var.frsn)
+                .get(&var.rg_vr)
                 .unwrap_or_else(|| panic!("{:?} is not defined.", var));
-            rglf.insert(var.frsn, (*scbt, *day + 1));
+            rglf.insert(var.rg_vr, (*scbt, *day + 1));
             let varsp = vstkd
-                .get(&var.frsn)
+                .get(&var.rg_vr)
                 .unwrap_or_else(|| panic!("{:?} is not defined.", var));
             let src = Register::newall(nextfreshregister(), *day + 1, *day + 1, 4);
             rglf.insert(src.vr, (src.btday, src.daday));
@@ -394,20 +456,20 @@ fn evalparserinstr(
             let dst;
             if let FirstClassObj::Variable(v1) = lfco {
                 let (v1birth, _) = rglf
-                    .get(&v1.frsn)
+                    .get(&v1.rg_vr)
                     .unwrap_or_else(|| panic!("{:?} is not defined.", v1));
-                dst = Register::newall(v1.frsn, *v1birth, *day + 1, v1.ty.toregrefsize());
-                rglf.insert(v1.frsn, (dst.btday, dst.daday));
+                dst = Register::newall(v1.rg_vr, *v1birth, *day + 1, v1.ty.toregrefsize());
+                rglf.insert(v1.rg_vr, (dst.btday, dst.daday));
             } else {
                 panic!("Bop lhs error in lowir.{:?}", lfco);
             }
             match rfco {
                 FirstClassObj::Variable(v2) => {
                     let (v2birth, _) = rglf
-                        .get(&v2.frsn)
+                        .get(&v2.rg_vr)
                         .unwrap_or_else(|| panic!("{:?} is not defined.", v2));
-                    let src = Register::newall(v2.frsn, *v2birth, *day + 1, v2.ty.toregrefsize());
-                    rglf.insert(v2.frsn, (src.btday, src.daday));
+                    let src = Register::newall(v2.rg_vr, *v2birth, *day + 1, v2.ty.toregrefsize());
+                    rglf.insert(v2.rg_vr, (src.btday, src.daday));
                     rbb.pushinstr(LowIrInstr::Bop(binop, dst, RegorNum::Reg(src)), day);
                 }
                 FirstClassObj::Num(valty, num) => {
@@ -436,23 +498,23 @@ fn evalparserinstr(
             Some(dst)
         }
         Comp(cop, dstv, srcv, fco) => {
-            let dst = Register::newall(dstv.frsn, *day + 1, *day + 1, dstv.ty.toregrefsize());
+            let dst = Register::newall(dstv.rg_vr, *day + 1, *day + 1, dstv.ty.toregrefsize());
             rglf.insert(dst.vr, (dst.btday, dst.daday));
             let (scbt, _) = rglf
-                .get(&srcv.frsn)
+                .get(&srcv.rg_vr)
                 .unwrap_or_else(|| panic!("{:?} is not defined in Ceqw.", srcv));
-            let src = Register::newall(srcv.frsn, *scbt, *day + 1, srcv.ty.toregrefsize());
-            rglf.insert(srcv.frsn, (src.btday, src.daday));
+            let src = Register::newall(srcv.rg_vr, *scbt, *day + 1, srcv.ty.toregrefsize());
+            rglf.insert(srcv.rg_vr, (src.btday, src.daday));
             let rorn = fco2reg(fco, rglf, *day);
             rbb.pushinstr(LowIrInstr::Comp(cop, dst, src, rorn), day);
             None
         }
         Jnz(srcv, lb1, lb2) => {
             let (scbt, _) = rglf
-                .get(&srcv.frsn)
+                .get(&srcv.rg_vr)
                 .unwrap_or_else(|| panic!("{:?} is not defined in Ceqw.", srcv));
-            let src = Register::newall(srcv.frsn, *scbt, *day + 1, srcv.ty.toregrefsize());
-            rglf.insert(srcv.frsn, (src.btday, src.daday));
+            let src = Register::newall(srcv.rg_vr, *scbt, *day + 1, srcv.ty.toregrefsize());
+            rglf.insert(srcv.rg_vr, (src.btday, src.daday));
             rbb.pushinstr(LowIrInstr::Jnz(src, lb1, lb2), day);
             None
         }
@@ -471,9 +533,9 @@ fn evalparserinstr(
 fn fco2reg(fco: FirstClassObj, rglf: &mut HashMap<i32, (i32, i32)>, day: i32) -> RegorNum {
     match fco {
         FirstClassObj::Variable(var) => {
-            if let Some((btday, dday)) = rglf.get(&var.frsn) {
-                let r = Register::newall(var.frsn, *btday, day + 1, var.ty.toregrefsize());
-                rglf.rgup(var.frsn, r.btday, r.daday, *dday);
+            if let Some((btday, dday)) = rglf.get(&var.rg_vr) {
+                let r = Register::newall(var.rg_vr, *btday, day + 1, var.ty.toregrefsize());
+                rglf.rgup(var.rg_vr, r.btday, r.daday, *dday);
                 RegorNum::Reg(r)
             } else {
                 panic!("{:?} is not defined", var);
@@ -530,6 +592,9 @@ fn registerlifeupdate(lpg: &mut LowIrProgram, rglf: &mut HashMap<i32, (i32, i32)
                         }
                     }
                     Storewnum(..) | Jmp(..) => {}
+                    LowNop => {
+                        panic!("cannot reach to LowNop instr.");
+                    }
                 }
             }
         }

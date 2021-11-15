@@ -15,7 +15,7 @@ alltests: $(BUILD)
 debug: $(BUILD)
 	@if [ $(OPTION) = "null" ]; then \
 		$(BIN) $(OPTION) $(OPTION2) $(TEST)/$(SSAFILE) > debug.s; \
-		gcc debug.s; \
+		gcc -static debug.s; \
 	else \
 		$(BIN) $(OPTION) $(OPTION2) $(TEST)/$(SSAFILE) > out_debug.txt; \
 		less out_debug.txt; \

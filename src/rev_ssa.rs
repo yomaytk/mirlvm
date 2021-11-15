@@ -125,7 +125,6 @@ fn cal_var_lifes(
 
 pub fn rev_ssa(spg: &mut SsaProgram) {
     let (lifes, bb_instr_lifes) = cal_var_lifes(spg);
-    let mut day = 0;
     use SsaInstrOp::*;
     for func in &mut spg.funcs {
         let mut bb_lbid_hash = HashMap::new();
@@ -192,12 +191,22 @@ pub fn rev_ssa(spg: &mut SsaProgram) {
                     _ => {}
                 }
                 proxy_instrs[bb.id].push(instr);
-                day += 1;
             }
             proxy_instrs[bb.id].append(&mut tmp_var_copy_instrs);
-            bb.instrs = std::mem::replace(&mut proxy_instrs[bb.id], vec![]);
+            // bb.instrs = std::mem::replace(&mut proxy_instrs[bb.id], vec![]);
         }
         for bb in &mut func.bls {
+            let mut branch_instrs = vec![];
+            for instr in &mut proxy_instrs[bb.id] {
+                match instr.op {
+                    Jnz(..) | Jmp(..) => {
+                        let tmp_instr = std::mem::replace(instr, SsaInstr::new(Nop));
+                        branch_instrs.push(tmp_instr);
+                    }
+                    _ => {}
+                }
+            }
+            proxy_instrs[bb.id].append(&mut branch_instrs);
             bb.instrs.append(&mut proxy_instrs[bb.id]);
         }
         proxy_instrs.clear();

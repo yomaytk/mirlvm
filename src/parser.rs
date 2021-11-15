@@ -210,11 +210,25 @@ pub struct Var {
     pub name: &'static str,
     pub ty: VarType,
     pub rg_vr: i32,
+    pub global: Option<Label>,
 }
 
 impl Var {
     pub fn new(name: &'static str, ty: VarType, rg_vr: i32) -> Self {
-        Self { name, ty, rg_vr }
+        Self {
+            name,
+            ty,
+            rg_vr,
+            global: None,
+        }
+    }
+    pub fn new_all(name: &'static str, ty: VarType, rg_vr: i32, global: Option<Label>) -> Self {
+        Self {
+            name,
+            ty,
+            rg_vr,
+            global,
+        }
     }
 }
 
@@ -382,7 +396,7 @@ impl Env {
     }
     pub fn g_gvs(&self, key: &'static str) -> Var {
         if let Some(v) = self.gvs.get(key) {
-            return Var::new(v.lb, v.types.clone(), -10);
+            return Var::new_all(v.lb, v.types.clone(), nextfreshregister(), Some(v.lb));
         } else {
             panic!("{} is not in Env.\nEnv: {:?}", key, self);
         }
@@ -440,7 +454,7 @@ fn parseinstrrhs(
             } else {
                 let ty = tms.gettype_n();
                 tms.eq_tkty(TokenType::Dollar);
-                let mut arg = tms.getfco_n(ty, env);
+                let arg = tms.getfco_n(ty, env);
 
                 args.push(arg);
             }

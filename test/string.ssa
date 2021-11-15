@@ -1,0 +1,8 @@
+data $fmt = { b "One and one make %d!\n", b 0 }
+data $fmt2 = { b "Hello, World!\n", b 0 }
+
+function w $main() {
+@L0: 
+    call $printf(l $fmt2, ...)
+    ret 42 
+}

@@ -154,6 +154,19 @@ fn main() {
         return;
     }
 
+    if option == "--out-lowir_all" {
+        for func in &lirpg.funcs {
+            println!("fun: {}", func.lb);
+            for bb in &func.rbbs {
+                println!("{}:", bb.lb);
+                for isr in &bb.instrs {
+                    println!("{:?}", isr);
+                }
+            }
+        }
+        return;
+    }
+
     // register allocate
     let lirpg2 = registeralloc(lirpg);
 
@@ -168,7 +181,7 @@ fn main() {
             for bb in func.rbbs {
                 println!("{}:", bb.lb);
                 for instr in bb.instrs {
-                    println!("{}", instr);
+                    println!("{:?}", instr);
                 }
             }
         }

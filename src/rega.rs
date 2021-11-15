@@ -116,6 +116,9 @@ fn regaoflir(
             }
             for r2 in regargs {
                 if r2.daday == *day {
+                    if r2.rr > 6 {
+                        panic!("{:?}", r2);
+                    }
                     realregs[r2.rr as usize] = None;
                 }
             }

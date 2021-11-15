@@ -1,6 +1,7 @@
 use super::lexer::Binop;
 use super::parser::*;
 use super::*;
+use super::codegen::NORMALREGQUANTITY;
 use rega::GENEREGSIZE;
 use std::collections::HashMap;
 use std::fmt;
@@ -35,6 +36,7 @@ pub struct Register {
     pub btday: i32,
     pub daday: i32,
     pub regsize: i32,
+    pub global: Option<Label>,
 }
 
 pub struct StashStacked {
@@ -74,15 +76,17 @@ impl Register {
             btday: NULLNUMBER,
             daday: NULLNUMBER,
             regsize: REGDEFASIZE,
+            global: None,
         }
     }
-    pub fn newall(vr: i32, btday: i32, daday: i32, regsize: i32) -> Self {
+    pub fn newall(vr: i32, btday: i32, daday: i32, regsize: i32, global: Option<Label>) -> Self {
         Self {
             vr,
             rr: NULLNUMBER,
             btday,
             daday,
             regsize,
+            global,
         }
     }
     pub fn regalloc(
@@ -90,8 +94,9 @@ impl Register {
         realregs: &mut [Option<Register>; GENEREGSIZE],
         stash_stacked: &mut StashStacked,
     ) -> NeedStack {
+        // alloc for register for assigned arguments register
         if self.vr < 0 {
-            self.rr = GENEREGSIZE as i32 - 1 + -(self.vr);
+            self.rr = NORMALREGQUANTITY as i32 - 1 + -(self.vr);
             return NeedStack::NoNeed;
         }
         // find register already allocated
@@ -389,7 +394,7 @@ fn evalparserinstr(
         Assign(_valuety, var, pinstr) => {
             let mut src = evalparserinstr(*pinstr, rglf, vstkd, rbb, day, stackpointer)
                 .unwrap_or_else(|| panic!("evalparserinstr error: Assign"));
-            let mut dst = Register::newall(var.rg_vr, *day + 1, *day + 1, var.ty.toregrefsize());
+            let mut dst = Register::newall(var.rg_vr, *day + 1, *day + 1, var.ty.toregrefsize(), var.global);
             if let Some((btday, _)) = rglf.get(&var.rg_vr) {
                 dst.btday = *btday;
             }
@@ -401,7 +406,7 @@ fn evalparserinstr(
         }
         Alloc4(var, _align) => {
             *stackpointer += 4;
-            let dst = Register::newall(var.rg_vr, *day, *day, var.ty.toregrefsize());
+            let dst = Register::newall(var.rg_vr, *day, *day, var.ty.toregrefsize(), var.global);
             assert_eq!(dst.regsize, 8);
             rglf.insert(dst.vr, (*day, *day));
             vstkd.insert(var.rg_vr, *stackpointer);
@@ -425,6 +430,7 @@ fn evalparserinstr(
                             *btday,
                             *day + 1,
                             srcvar.ty.toregrefsize(),
+                            srcvar.global,
                         );
                         rglf.insert(srcvar.rg_vr, (src.btday, src.daday));
                     } else {
@@ -447,7 +453,7 @@ fn evalparserinstr(
             let varsp = vstkd
                 .get(&var.rg_vr)
                 .unwrap_or_else(|| panic!("{:?} is not defined.", var));
-            let src = Register::newall(nextfreshregister(), *day + 1, *day + 1, 4);
+            let src = Register::newall(nextfreshregister(), *day + 1, *day + 1, 4, None);
             rglf.insert(src.vr, (src.btday, src.daday));
             rbb.pushinstr(LowIrInstr::Loadw(src, *varsp), day);
             Some(src)
@@ -458,7 +464,7 @@ fn evalparserinstr(
                 let (v1birth, _) = rglf
                     .get(&v1.rg_vr)
                     .unwrap_or_else(|| panic!("{:?} is not defined.", v1));
-                dst = Register::newall(v1.rg_vr, *v1birth, *day + 1, v1.ty.toregrefsize());
+                dst = Register::newall(v1.rg_vr, *v1birth, *day + 1, v1.ty.toregrefsize(), v1.global);
                 rglf.insert(v1.rg_vr, (dst.btday, dst.daday));
             } else {
                 panic!("Bop lhs error in lowir.{:?}", lfco);
@@ -468,7 +474,7 @@ fn evalparserinstr(
                     let (v2birth, _) = rglf
                         .get(&v2.rg_vr)
                         .unwrap_or_else(|| panic!("{:?} is not defined.", v2));
-                    let src = Register::newall(v2.rg_vr, *v2birth, *day + 1, v2.ty.toregrefsize());
+                    let src = Register::newall(v2.rg_vr, *v2birth, *day + 1, v2.ty.toregrefsize(), v2.global);
                     rglf.insert(v2.rg_vr, (src.btday, src.daday));
                     rbb.pushinstr(LowIrInstr::Bop(binop, dst, RegorNum::Reg(src)), day);
                 }
@@ -488,6 +494,7 @@ fn evalparserinstr(
                 *day + 1,
                 *day + 1,
                 retty.toregrefsize(),
+                None
             );
             rglf.insert(dst.vr, (dst.btday, dst.daday));
             let mut newargs = vec![];
@@ -498,12 +505,12 @@ fn evalparserinstr(
             Some(dst)
         }
         Comp(cop, dstv, srcv, fco) => {
-            let dst = Register::newall(dstv.rg_vr, *day + 1, *day + 1, dstv.ty.toregrefsize());
+            let dst = Register::newall(dstv.rg_vr, *day + 1, *day + 1, dstv.ty.toregrefsize(), dstv.global);
             rglf.insert(dst.vr, (dst.btday, dst.daday));
             let (scbt, _) = rglf
                 .get(&srcv.rg_vr)
                 .unwrap_or_else(|| panic!("{:?} is not defined in Ceqw.", srcv));
-            let src = Register::newall(srcv.rg_vr, *scbt, *day + 1, srcv.ty.toregrefsize());
+            let src = Register::newall(srcv.rg_vr, *scbt, *day + 1, srcv.ty.toregrefsize(), srcv.global);
             rglf.insert(srcv.rg_vr, (src.btday, src.daday));
             let rorn = fco2reg(fco, rglf, *day);
             rbb.pushinstr(LowIrInstr::Comp(cop, dst, src, rorn), day);
@@ -513,7 +520,7 @@ fn evalparserinstr(
             let (scbt, _) = rglf
                 .get(&srcv.rg_vr)
                 .unwrap_or_else(|| panic!("{:?} is not defined in Ceqw.", srcv));
-            let src = Register::newall(srcv.rg_vr, *scbt, *day + 1, srcv.ty.toregrefsize());
+            let src = Register::newall(srcv.rg_vr, *scbt, *day + 1, srcv.ty.toregrefsize(), srcv.global);
             rglf.insert(srcv.rg_vr, (src.btday, src.daday));
             rbb.pushinstr(LowIrInstr::Jnz(src, lb1, lb2), day);
             None
@@ -534,8 +541,12 @@ fn fco2reg(fco: FirstClassObj, rglf: &mut HashMap<i32, (i32, i32)>, day: i32) ->
     match fco {
         FirstClassObj::Variable(var) => {
             if let Some((btday, dday)) = rglf.get(&var.rg_vr) {
-                let r = Register::newall(var.rg_vr, *btday, day + 1, var.ty.toregrefsize());
+                let r = Register::newall(var.rg_vr, *btday, day + 1, var.ty.toregrefsize(), var.global);
                 rglf.rgup(var.rg_vr, r.btday, r.daday, *dday);
+                RegorNum::Reg(r)
+            } else if let Some(_) = var.global {
+                let r = Register::newall(var.rg_vr, day + 1, day + 1, var.ty.toregrefsize(), var.global);
+                rglf.rgup(var.rg_vr, r.btday, r.daday, -1);
                 RegorNum::Reg(r)
             } else {
                 panic!("{:?} is not defined", var);
@@ -603,7 +614,7 @@ fn registerlifeupdate(lpg: &mut LowIrProgram, rglf: &mut HashMap<i32, (i32, i32)
 
 fn processfunarguments(args: &Vec<Var>, rglf: &mut HashMap<i32, (i32, i32)>) {
     for i in 0..args.len() {
-        let r = Register::newall(-(i as i32 + 1), 0, std::i32::MAX, args[i].ty.toregrefsize());
+        let r = Register::newall(-(i as i32 + 1), 0, std::i32::MAX, args[i].ty.toregrefsize(), None);
         rglf.insert(r.vr, (r.btday, r.daday));
     }
 }

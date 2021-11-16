@@ -53,7 +53,23 @@ The main process for each pass of mirlvm is as follows:
 8. Code generation pass
 <br> - Generates the program for x86_64 assembly.
 
+## Security
+mirlvm currently has the following security features.
+- Signed integer overflow detection
+
+	 The following assembly instruction sequence causes an overflow.
+	 ```
+	 mov r10d, 44344433
+	 mov r11d, 54343434
+	 mov ebx, r11d
+	 mov eax, ebx
+	 imul r10d
+	 ```
+	 When such an instruction sequence is executed, it detects the overflow, outputs an error message, and forcibly terminates.
 ## build
 Execute the command below to generate the executable file `a.out`.
+If you want to run in secure mode, add `OPTION3=-Sec`.
 
     $ make debug OPTION2=-O1 SSAFILE=file_name
+    
+    

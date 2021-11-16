@@ -20,6 +20,5 @@ function $main() {
 	%c1 =w ceqw 50, %n1
 	jnz %c1, @end, @loop
 @end:
-	storew %p, $a
-	ret
+	ret %p
 }

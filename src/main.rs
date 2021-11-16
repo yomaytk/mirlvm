@@ -15,9 +15,14 @@ fn main() {
     let args = env::args().collect::<Vec<String>>();
     let option = &args[1];
     let mut option2 = "";
+    let mut option3 = "";
 
     if args.len() > 3 {
         option2 = &args[2];
+    }
+
+    if args.len() > 4 {
+        option3 = &args[3];
     }
 
     // lexical analysis
@@ -189,5 +194,5 @@ fn main() {
     }
 
     // generate x64 code
-    gen_x64code(lirpg2);
+    gen_x64code(lirpg2, option3 == "-Sec");
 }

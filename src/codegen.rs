@@ -4,6 +4,9 @@ use super::parser::FirstClassObj;
 use super::*;
 use parser::CompOp;
 
+extern crate rand;
+use rand::seq::SliceRandom;
+
 const REGQUANTITY: usize = 13;
 pub const NORMALREGQUANTITY: usize = 7;
 
@@ -67,12 +70,51 @@ fn movregreg(r1: &Register, r2: &Register) {
     }
 }
 
-pub fn gen_x64code(lirpg: LowIrProgram) {
+
+const BASE_STR: &str = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789";
+
+fn gen_random_label(size: usize) -> String {
+    let mut rng = &mut rand::thread_rng();
+    String::from_utf8(
+        BASE_STR.as_bytes()
+            .choose_multiple(&mut rng, size)
+            .cloned()
+            .collect()
+    ).unwrap()
+}
+
+fn gen_jmp_overflow(overflow_black_label: String) {
+    print!("\tpushf\n");
+    print!("\tmov r15d, [rsp]\n");
+    print!("\tand r15d, 0x00000800\n");
+    print!("\tcmp r15d, 0\n");
+    print!("\tjne .{}\n", overflow_black_label);
+    print!("\tpopf\n");
+}
+
+fn gen_overflow_block(num_overflow_label: String, overflow_black_label: String) {
+    print!(".{}:\n", overflow_black_label);
+    print!("\tmov edi, OFFSET FLAT:.{}\n", num_overflow_label);
+    print!("\tmov eax, 0\n");
+    print!("\tcall printf\n");
+    print!("\tpopf\n");
+    print!("\tpop rbp\n");
+    print!("\tret\n");
+}
+
+pub fn gen_x64code(lirpg: LowIrProgram, secure_mode: bool) {
     print!(".intel_syntax noprefix\n");
 
     // data section
     print!(".data\n");
     print!("\n");
+    let num_overflow_label = gen_random_label(100);
+    let overflow_black_label = gen_random_label(50);
+    if secure_mode {
+        print!(".{}:\n", &num_overflow_label[..]);
+        print!("\t.string \"execution error of integer overflow.\\n\"\n");
+    }
+
     for gd in lirpg.gvs {
         print!("{}:\n", gd.lb);
         for eled in gd.dts {
@@ -144,10 +186,23 @@ pub fn gen_x64code(lirpg: LowIrProgram) {
                         };
                         match r2 {
                             RegorNum::Reg(r) => {
-                                print!("\t{} {}, {}\n", op, selreg(r1), selreg(r));
+                                if op == "add" || op == "sub" {
+                                    print!("\t{} {}, {}\n", op, selreg(r1), selreg(r));
+                                } else {
+                                    assert_eq!(op, "mul");
+                                    print!("\tmov {}, {}\n", selrax(r.regsize as usize), selreg(r));
+                                    print!("\timul {}\n", selreg(r1));
+                                    print!("\tmov {}, {}\n", selreg(r1), selrax(r.regsize as usize))
+                                }
                             }
                             RegorNum::Num(num) => {
+                                assert!(op == "add" || op == "sub");
                                 print!("\t{} {}, {}\n", op, selreg(r1), num);
+                            }
+                        }
+                        if secure_mode {
+                            if op == "add" || op == "mul" {
+                                gen_jmp_overflow(overflow_black_label.clone());
                             }
                         }
                     }
@@ -225,5 +280,8 @@ pub fn gen_x64code(lirpg: LowIrProgram) {
                 }
             }
         }
+    }
+    if secure_mode {
+        gen_overflow_block(num_overflow_label, overflow_black_label);
     }
 }

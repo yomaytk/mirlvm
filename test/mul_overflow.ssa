@@ -1,0 +1,15 @@
+function w $main() {
+@Lb0:
+    %a =l alloc4 4
+    %b =l alloc4 4
+    %c =l alloc4 4
+    storew 3, %a
+    storew 44343443, %b
+    storew 54343434, %c
+    %t8 =w loadw %a
+    %t9 =w loadw %b
+    %t7 =w mul %t8, %t9
+    %t10 =w loadw %c
+    %t6 =w mul %t7, %t10
+    ret %t6
+}
